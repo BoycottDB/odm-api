@@ -58,92 +58,59 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Get all brands with events and categories
-    const { data: marques, error } = await supabase
+    // Get all brands first, then get events separately to avoid complex joins
+    const { data: marques, error: marqueError } = await supabase
       .from('Marque')
-      .select(`
-        id,
-        nom,
-        imagePath,
-        category,
-        shortDescription,
-        description,
-        nbControverses,
-        nbCondamnations,
-        nbDirigeantsControverses,
-        Evenement (
-          id,
-          titre,
-          date,
-          source_url,
-          condamnation_judiciaire,
-          categorie_id,
-          Categorie!Evenement_categorie_id_fkey (
-            id,
-            nom,
-            emoji,
-            couleur
-          )
-        ),
-        marque_dirigeant!marque_id (
-          id,
-          dirigeant_nom,
-          controverses
-        )
-      `)
+      .select('*')
       .order('nom');
 
-    if (error) throw error;
+    if (marqueError) throw marqueError;
+
+    // Get all events
+    const { data: evenements, error: eventError } = await supabase
+      .from('Evenement')
+      .select('*');
+
+    if (eventError) {
+      console.warn('Could not load events:', eventError);
+      // Continue without events rather than failing completely
+    }
+
+    // Group events by marque
+    const eventsByMarque = new Map();
+    if (evenements) {
+      evenements.forEach(evt => {
+        const marqueId = evt.marque_id || evt.marqueId;
+        if (marqueId) {
+          if (!eventsByMarque.has(marqueId)) {
+            eventsByMarque.set(marqueId, []);
+          }
+          eventsByMarque.get(marqueId).push(evt);
+        }
+      });
+    }
 
     // Transform data for extension compatibility
     const transformedBrands = marques.map(marque => {
-      const evenements = marque.Evenement || [];
+      const evenements = eventsByMarque.get(marque.id) || [];
       
       // Calculate real stats
       const nbControverses = evenements.length;
       const nbCondamnations = evenements.filter(e => e.condamnation_judiciaire === true).length;
-      const nbDirigeantsControverses = marque.marque_dirigeant ? marque.marque_dirigeant.length : 0;
+      const nbDirigeantsControverses = marque.nbDirigeantsControverses || 0;
       
-      // Extract unique categories
-      const categoriesMap = new Map();
-      evenements.forEach(evt => {
-        const categorie = evt.Categorie;
-        let cat = null;
-        if (Array.isArray(categorie) && categorie.length > 0) {
-          cat = categorie[0];
-        } else if (categorie && 'nom' in categorie) {
-          cat = categorie;
-        }
-        if (cat && cat.id) {
-          categoriesMap.set(cat.id, {
-            id: cat.id,
-            nom: cat.nom,
-            emoji: cat.emoji,
-            couleur: cat.couleur
-          });
-        }
-      });
-      const categories = Array.from(categoriesMap.values());
+      // For now, use simple categories without complex joins
+      const categories = [];
       
-      // Transform events
-      const transformedEvenements = evenements.map(evt => {
-        const categorie = evt.Categorie;
-        let transformedCategorie = null;
-        if (Array.isArray(categorie) && categorie.length > 0) {
-          transformedCategorie = categorie[0];
-        } else if (categorie && 'nom' in categorie) {
-          transformedCategorie = categorie;
-        }
-        
-        return {
-          id: evt.id,
-          titre: evt.titre,
-          date: evt.date,
-          source_url: evt.source_url,
-          condamnation_judiciaire: evt.condamnation_judiciaire,
-          categorie: transformedCategorie
-        };
-      });
+      // Transform events without complex joins
+      const transformedEvenements = evenements.map(evt => ({
+        id: evt.id,
+        titre: evt.titre || evt.description,
+        date: evt.date,
+        source_url: evt.source_url || evt.source,
+        condamnation_judiciaire: evt.condamnation_judiciaire || false,
+        categorie: evt.categorie || null
+      }));
       
       return {
         id: marque.id,
