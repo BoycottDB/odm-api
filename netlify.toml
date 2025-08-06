@@ -19,17 +19,17 @@
   status = 200
   
 [[redirects]]
-  from = "/api/brands-version"
+  from = "/api/brands/version"
   to = "/.netlify/functions/brands-version"
   status = 200
 
 [[redirects]]
-  from = "/api/brands-updates"
+  from = "/api/brands/updates"
   to = "/.netlify/functions/brands-updates"
   status = 200
 
 [[redirects]]
-  from = "/api/brands-full"
+  from = "/api/brands/full"
   to = "/.netlify/functions/brands-full"
   status = 200
 
