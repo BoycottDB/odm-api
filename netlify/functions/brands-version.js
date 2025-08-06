@@ -59,30 +59,76 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Get brand stats
-    const { data: brandStats, error: brandError } = await supabase
-      .from('Marque')
-      .select('updated_at')
-      .order('updated_at', { ascending: false })
-      .limit(1);
+    // Get brand stats (try different timestamp columns)
+    let brandStats = null;
+    let eventStats = null;
+    
+    // Try updated_at first, then created_at, then id-based approach
+    try {
+      const { data, error } = await supabase
+        .from('Marque')
+        .select('updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (!error) brandStats = data;
+    } catch {
+      // Fallback to created_at or id
+      try {
+        const { data } = await supabase
+          .from('Marque')
+          .select('created_at')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        brandStats = data?.map(item => ({ updated_at: item.created_at }));
+      } catch {
+        // Final fallback: use current time
+        brandStats = [{ updated_at: new Date().toISOString() }];
+      }
+    }
 
-    const { data: eventStats, error: eventError } = await supabase
-      .from('Evenement')
-      .select('updated_at')
-      .order('updated_at', { ascending: false })
-      .limit(1);
+    try {
+      const { data, error } = await supabase
+        .from('Evenement')
+        .select('updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (!error) eventStats = data;
+    } catch {
+      try {
+        const { data } = await supabase
+          .from('Evenement')
+          .select('created_at')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        eventStats = data?.map(item => ({ updated_at: item.created_at }));
+      } catch {
+        eventStats = [{ updated_at: new Date().toISOString() }];
+      }
+    }
 
-    if (brandError) throw brandError;
-    if (eventError) throw eventError;
+    // Count totals with error handling
+    let totalBrands = 0;
+    let totalEvents = 0;
+    
+    try {
+      const { count } = await supabase
+        .from('Marque')
+        .select('*', { count: 'exact', head: true });
+      totalBrands = count || 0;
+    } catch (error) {
+      console.error('Error counting brands:', error);
+      totalBrands = 0;
+    }
 
-    // Count totals
-    const { count: totalBrands } = await supabase
-      .from('Marque')
-      .select('*', { count: 'exact', head: true });
-
-    const { count: totalEvents } = await supabase
-      .from('Evenement')
-      .select('*', { count: 'exact', head: true });
+    try {
+      const { count } = await supabase
+        .from('Evenement')
+        .select('*', { count: 'exact', head: true });
+      totalEvents = count || 0;
+    } catch (error) {
+      console.error('Error counting events:', error);
+      totalEvents = 0;
+    }
 
     // Calculate version
     const lastBrandUpdate = brandStats?.[0]?.updated_at || new Date().toISOString();
@@ -97,8 +143,8 @@ export const handler = async (event, context) => {
     const versionData = {
       version: mostRecent.toISOString(),
       lastUpdated: mostRecent.toISOString(),
-      totalBrands: totalBrands || 0,
-      totalEvents: totalEvents || 0,
+      totalBrands: totalBrands,
+      totalEvents: totalEvents,
       checksum
     };
 
