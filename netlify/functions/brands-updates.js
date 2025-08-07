@@ -191,8 +191,12 @@ export const handler = async (event, context) => {
       
       const nbControverses = evenements.length;
       const nbCondamnations = evenements.filter(e => e.condamnation_judiciaire === true).length;
-      // Calculate real number of controversial leaders
-      const nbDirigeantsControverses = marque.marque_dirigeant ? marque.marque_dirigeant.length : 0;
+      // Calculate real number of controversial leaders (handle object/array from Supabase)
+      let dirigeants = marque.marque_dirigeant || [];
+      if (!Array.isArray(dirigeants)) {
+        dirigeants = dirigeants ? [dirigeants] : [];
+      }
+      const nbDirigeantsControverses = dirigeants.length;
       
       // Extract unique categories from events with their details
       const categoryMap = new Map();
@@ -241,7 +245,7 @@ export const handler = async (event, context) => {
         imagePath: marque.imagePath,
         lastUpdated: marque.updated_at || marque.created_at || new Date().toISOString(),
         // Add controversial leaders data for extension
-        dirigeants_controverses: marque.marque_dirigeant || []
+        dirigeants_controverses: dirigeants
       };
     });
 
