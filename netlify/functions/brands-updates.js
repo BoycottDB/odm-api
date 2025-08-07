@@ -82,12 +82,21 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Try to get updated brands, fall back if updated_at column doesn't exist
+    // Try to get updated brands with leaders, fall back if updated_at column doesn't exist
     let updatedBrands = [];
     try {
       const { data, error } = await supabase
         .from('Marque')
-        .select('*')
+        .select(`
+          *,
+          marque_dirigeant!marque_id (
+            id,
+            dirigeant_nom,
+            controverses,
+            lien_financier,
+            impact_description
+          )
+        `)
         .gte('updated_at', since)
         .order('updated_at', { ascending: false });
       
@@ -99,17 +108,35 @@ export const handler = async (event, context) => {
       // Fallback: get all brands if updated_at filtering fails
       const { data } = await supabase
         .from('Marque')
-        .select('*')
+        .select(`
+          *,
+          marque_dirigeant!marque_id (
+            id,
+            dirigeant_nom,
+            controverses,
+            lien_financier,
+            impact_description
+          )
+        `)
         .order('nom');
       updatedBrands = data || [];
     }
 
-    // Try to get updated events
+    // Try to get updated events with categories
     let updatedEvents = [];
     try {
       const { data, error } = await supabase
         .from('Evenement')
-        .select('*')
+        .select(`
+          *,
+          Categorie!Evenement_categorie_id_fkey (
+            id,
+            nom,
+            emoji,
+            couleur,
+            ordre
+          )
+        `)
         .gte('updated_at', since)
         .order('updated_at', { ascending: false });
       
@@ -122,14 +149,23 @@ export const handler = async (event, context) => {
       updatedEvents = [];
     }
 
-    // Get events for these brands
+    // Get events for these brands with categories
     const marqueIds = updatedBrands.map(b => b.id);
     let brandsEvents = [];
     if (marqueIds.length > 0) {
       try {
         const { data } = await supabase
           .from('Evenement')
-          .select('*')
+          .select(`
+            *,
+            Categorie!Evenement_categorie_id_fkey (
+              id,
+              nom,
+              emoji,
+              couleur,
+              ordre
+            )
+          `)
           .in('marque_id', marqueIds);
         brandsEvents = data || [];
       } catch (error) {
@@ -155,19 +191,40 @@ export const handler = async (event, context) => {
       
       const nbControverses = evenements.length;
       const nbCondamnations = evenements.filter(e => e.condamnation_judiciaire === true).length;
-      const nbDirigeantsControverses = marque.nbDirigeantsControverses || 0;
+      // Calculate real number of controversial leaders
+      const nbDirigeantsControverses = marque.marque_dirigeant ? marque.marque_dirigeant.length : 0;
       
-      // Simple categories for now
-      const categories = [];
+      // Extract unique categories from events with their details
+      const categoryMap = new Map();
+      evenements.forEach(evt => {
+        if (evt.Categorie) {
+          const cat = evt.Categorie;
+          if (!categoryMap.has(cat.id)) {
+            categoryMap.set(cat.id, {
+              id: cat.id,
+              nom: cat.nom,
+              emoji: cat.emoji,
+              couleur: cat.couleur,
+              ordre: cat.ordre
+            });
+          }
+        }
+      });
+      const categories = Array.from(categoryMap.values()).sort((a, b) => (a.ordre || 999) - (b.ordre || 999));
       
-      // Transform events
+      // Transform events with category details
       const transformedEvenements = evenements.map(evt => ({
         id: evt.id,
         titre: evt.titre || evt.description,
         date: evt.date,
         source_url: evt.source_url || evt.source,
         condamnation_judiciaire: evt.condamnation_judiciaire || false,
-        categorie: evt.categorie || null
+        categorie: evt.Categorie ? {
+          id: evt.Categorie.id,
+          nom: evt.Categorie.nom,
+          emoji: evt.Categorie.emoji,
+          couleur: evt.Categorie.couleur
+        } : null
       }));
       
       return {
@@ -182,7 +239,9 @@ export const handler = async (event, context) => {
         shortDescription: marque.shortDescription,
         description: marque.description,
         imagePath: marque.imagePath,
-        lastUpdated: marque.updated_at || marque.created_at || new Date().toISOString()
+        lastUpdated: marque.updated_at || marque.created_at || new Date().toISOString(),
+        // Add controversial leaders data for extension
+        dirigeants_controverses: marque.marque_dirigeant || []
       };
     });
 
