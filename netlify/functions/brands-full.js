@@ -58,18 +58,36 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Get all brands first, then get events separately to avoid complex joins
+    // Get all brands with their leaders and events with categories
     const { data: marques, error: marqueError } = await supabase
       .from('Marque')
-      .select('*')
+      .select(`
+        *,
+        marque_dirigeant!marque_id (
+          id,
+          dirigeant_nom,
+          controverses,
+          lien_financier,
+          impact_description
+        )
+      `)
       .order('nom');
 
     if (marqueError) throw marqueError;
 
-    // Get all events
+    // Get all events with their categories
     const { data: evenements, error: eventError } = await supabase
       .from('Evenement')
-      .select('*');
+      .select(`
+        *,
+        Categorie!Evenement_categorie_id_fkey (
+          id,
+          nom,
+          emoji,
+          couleur,
+          ordre
+        )
+      `);
 
     if (eventError) {
       console.warn('Could not load events:', eventError);
@@ -97,19 +115,40 @@ export const handler = async (event, context) => {
       // Calculate real stats
       const nbControverses = evenements.length;
       const nbCondamnations = evenements.filter(e => e.condamnation_judiciaire === true).length;
-      const nbDirigeantsControverses = marque.nbDirigeantsControverses || 0;
+      // Calculate real number of controversial leaders
+      const nbDirigeantsControverses = marque.marque_dirigeant ? marque.marque_dirigeant.length : 0;
       
-      // For now, use simple categories without complex joins
-      const categories = [];
+      // Extract unique categories from events with their details
+      const categoryMap = new Map();
+      evenements.forEach(evt => {
+        if (evt.Categorie) {
+          const cat = evt.Categorie;
+          if (!categoryMap.has(cat.id)) {
+            categoryMap.set(cat.id, {
+              id: cat.id,
+              nom: cat.nom,
+              emoji: cat.emoji,
+              couleur: cat.couleur,
+              ordre: cat.ordre
+            });
+          }
+        }
+      });
+      const categories = Array.from(categoryMap.values()).sort((a, b) => (a.ordre || 999) - (b.ordre || 999));
       
-      // Transform events without complex joins
+      // Transform events with category details
       const transformedEvenements = evenements.map(evt => ({
         id: evt.id,
         titre: evt.titre || evt.description,
         date: evt.date,
         source_url: evt.source_url || evt.source,
         condamnation_judiciaire: evt.condamnation_judiciaire || false,
-        categorie: evt.categorie || null
+        categorie: evt.Categorie ? {
+          id: evt.Categorie.id,
+          nom: evt.Categorie.nom,
+          emoji: evt.Categorie.emoji,
+          couleur: evt.Categorie.couleur
+        } : null
       }));
       
       return {
@@ -123,7 +162,9 @@ export const handler = async (event, context) => {
         category: marque.category,
         shortDescription: marque.shortDescription,
         description: marque.description,
-        imagePath: marque.imagePath
+        imagePath: marque.imagePath,
+        // Add controversial leaders data for extension
+        dirigeants_controverses: marque.marque_dirigeant || []
       };
     });
 

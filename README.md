@@ -1,6 +1,6 @@
 # Extension API - Répertoire des Marques à Boycotter
 
-API Express.js pour les mises à jour automatiques de l'extension Chrome/Firefox du Répertoire Collaboratif des Marques à Boycotter.
+API Serverless (Netlify Functions) optimisée pour la synchronisation des extensions Chrome/Firefox du Répertoire Collaboratif des Marques à Boycotter.
 
 ## 🎯 Objectif
 
@@ -9,65 +9,84 @@ Cette API permet à l'extension de :
 - Récupérer les mises à jour incrémentales depuis une date donnée
 - Obtenir l'ensemble complet des données en cas de problème
 
-## 🏗️ Architecture
+## 🏗️ Architecture Serverless
 
-### Système hybride
-- **Extension** : Données statiques embedées + mises à jour dynamiques
-- **API** : Connectée à la base Supabase partagée avec le site web
-- **Cache intelligent** : Optimisation des performances et réduction de la charge
+### Netlify Functions + Edge CDN
+- **Serverless** : Auto-scaling avec Netlify Functions (Node.js 22)
+- **Cache Multi-niveau** : In-memory + CDN Edge (5-30min TTL)
+- **Distribution Globale** : Edge computing pour latence minimale
+- **Source de vérité** : Base Supabase partagée avec l'application web
 
-## 🚀 Installation et démarrage
+### Pipeline de Données
+```
+Supabase (PostgreSQL) → Netlify Functions → Extensions Browser
+     ↓                        ↓                    ↓
+ Relations DB            Transform + Cache    Local Storage
+ Temps réel                JSON optimisé       Sync incrémentale
+```
+
+## 🚀 Développement Local
 
 ### Prérequis
-- Node.js 18+
+- Node.js 22+ (ESM modules)
+- Netlify CLI : `npm install -g netlify-cli`
 - Variables d'environnement Supabase
 
 ### Installation
 ```bash
+# Clone et installation
+git clone [repo-url]
+cd extension-api
 npm install
 ```
 
 ### Configuration
-Copier `.env.example` vers `.env` et remplir :
+Créer `.env` avec :
 ```env
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
-PORT=3001
+NODE_ENV=development
 ```
 
-### Démarrage
+### Démarrage Local
 ```bash
-# Développement avec watch
-npm run dev
+# Développement avec Netlify Dev
+netlify dev
 
-# Production
-npm start
+# Test des functions individuellement
+netlify functions:invoke health
+netlify functions:invoke brands-version
+
+# Déploiement
+netlify deploy --prod
 ```
 
 ## 📡 Endpoints API
 
 ### `GET /health`
-Vérification de l'état de l'API
+Health check et diagnostics du service
 ```json
 {
   "status": "OK",
   "timestamp": "2024-01-15T10:30:00.000Z",
-  "uptime": 3600,
-  "version": "1.0.0"
+  "service": "Extension API - Netlify",
+  "version": "1.0.0",
+  "environment": "production"
 }
 ```
 
 ### `GET /api/brands/version`
-Obtenir la version actuelle des données
+Métadonnées de version pour synchronisation intelligente
 ```json
 {
   "version": "2024-01-15T10:30:00.000Z",
-  "lastUpdated": "2024-01-15T10:30:00.000Z",
+  "lastUpdated": "2024-01-15T10:30:00.000Z", 
   "totalBrands": 42,
   "totalEvents": 156,
   "checksum": "42-156-1705316200000"
 }
 ```
+**Cache :** 5 minutes | **Fallback :** updated_at → created_at → timestamp
 
 ### `GET /api/brands/updates?since=<ISO_DATE>`
 Récupérer les mises à jour depuis une date
