@@ -90,7 +90,7 @@ export const handler = async (event, context) => {
 
 ### brands-updates.js - Incremental Sync
 ```javascript
-// Architecture: Delta Sync avec Schema Tolerance
+// Architecture: Delta Sync avec Schema Tolerance + Relations V2
 export const handler = async (event, context) => {
   const since = event.queryStringParameters?.since
   
@@ -101,18 +101,38 @@ export const handler = async (event, context) => {
   
   // Pattern: Try-catch avec fallback gracieux
   try {
-    // Requête optimisée avec updated_at
+    // Requête optimisée avec updated_at + dirigeants normalisés
     const brands = await supabase
       .from('Marque')
-      .select('*')
+      .select(`
+        *,
+        marque_dirigeant!marque_id (
+          id,
+          dirigeant_id,
+          lien_financier,
+          impact_specifique,
+          dirigeant:dirigeant_id (
+            id, nom, controverses, sources, impact_generique
+          )
+        )
+      `)
       .gte('updated_at', since)
   } catch (error) {
     // Fallback: récupération complète si colonne manquante
     const brands = await supabase
       .from('Marque')
-      .select('*')
+      .select(`
+        *,
+        marque_dirigeant!marque_id (
+          id, dirigeant_id, lien_financier, impact_specifique,
+          dirigeant:dirigeant_id (id, nom, controverses, sources, impact_generique)
+        )
+      `)
       .order('nom')
   }
+  
+  // Transformation pour compatibilité extension
+  const transformedBrands = brands.map(transformBrandWithLeaders)
 }
 ```
 **Patterns utilisés :**
@@ -120,19 +140,39 @@ export const handler = async (event, context) => {
 - Delta synchronization
 - Fallback strategy pour compatibilité
 - Cache par paramètre `since`
+- **Relations normalisées** dirigeants (V2)
+- **Transformation de données** pour rétrocompatibilité extension
 
 ### brands-full.js - Complete Data Fallback
 ```javascript
-// Architecture: Separated Queries + In-Memory Join
+// Architecture: Relations Complexes + Data Transformation V2
 export const handler = async (event, context) => {
-  // Pattern: Éviter les JOINs Supabase coûteux
-  const [brands, events] = await Promise.all([
-    supabase.from('Marque').select('*'),
-    supabase.from('Evenement').select('*')
-  ])
+  // Pattern: Relations normalisées avec dirigeants
+  const { data: brands, error } = await supabase
+    .from('Marque')
+    .select(`
+      *,
+      marque_dirigeant!marque_id (
+        id, dirigeant_id, lien_financier, impact_specifique,
+        dirigeant:dirigeant_id (
+          id, nom, controverses, sources, impact_generique
+        )
+      )
+    `)
+    .order('nom')
   
-  // Transformation en mémoire
-  const transformedBrands = transformBrandsForExtension(brands, events)
+  // Événements avec catégories
+  const { data: events } = await supabase
+    .from('Evenement')
+    .select(`
+      *,
+      Categorie!Evenement_categorie_id_fkey (
+        id, nom, emoji, couleur, ordre
+      )
+    `)
+  
+  // Transformation complexe dirigeants + événements
+  const transformedBrands = transformBrandsWithLeadersForExtension(brands, events)
   
   return successResponse({
     brands: transformedBrands,
@@ -143,10 +183,11 @@ export const handler = async (event, context) => {
 }
 ```
 **Patterns utilisés :**
-- Separated queries (évite JOINs complexes)
-- In-memory data joining avec Map
-- Data transformation pipeline
-- Long TTL cache (30 minutes)
+- **Relations normalisées** (marque_dirigeant ← dirigeant)
+- **Data transformation complexe** dirigeants + événements
+- **Rétrocompatibilité** format extension Chrome/Firefox
+- **Cache longue durée** (30 minutes)
+- **Gestion d'erreurs** gracieuse par section
 
 ## 🎯 Patterns Architecturaux Principaux
 
@@ -192,26 +233,115 @@ const getCachedData = (key, fallbackFn) => {
     Access-Control-Allow-Origin = "*"
 ```
 
-### 3. Data Transformation Pipeline
+### 3. Data Transformation Pipeline V2 - Relations Normalisées
 ```javascript
-// Extension-specific data format
-const transformBrandsForExtension = (brands, events) => {
-  const eventsByBrand = groupBy(events, 'marqueId')
+// Extension-specific data format avec dirigeants normalisés
+const transformBrandsWithLeadersForExtension = (brands, events) => {
+  const eventsByBrand = groupBy(events, 'marque_id')
   
-  return brands.map(brand => ({
-    id: brand.id,
-    name: brand.nom,
-    nbControverses: eventsByBrand[brand.id]?.length || 0,
-    nbCondamnations: eventsByBrand[brand.id]?.filter(e => e.condamnationJudiciaire).length || 0,
-    categories: extractCategories(eventsByBrand[brand.id] || []),
-    evenements: eventsByBrand[brand.id] || [],
-    // Extension-specific fields
-    category: 'consumer_goods', // Default category
-    shortDescription: generateShortDesc(eventsByBrand[brand.id]),
-    imagePath: null // Extensions handle logos separately
-  }))
+  return brands.map(brand => {
+    // Gestion dirigeants normalisés (V2)
+    let dirigeants = brand.marque_dirigeant || []
+    if (!Array.isArray(dirigeants)) {
+      dirigeants = dirigeants ? [dirigeants] : []
+    }
+    
+    // Transformation dirigeants pour compatibilité extension
+    const transformedLeaders = dirigeants.map(liaison => ({
+      id: liaison.id,
+      dirigeant_id: liaison.dirigeant_id,
+      dirigeant_nom: liaison.dirigeant?.nom || '',
+      controverses: liaison.dirigeant?.controverses || '',
+      sources: liaison.dirigeant?.sources || [],
+      lien_financier: liaison.lien_financier,
+      impact_description: liaison.impact_specifique || liaison.dirigeant?.impact_generique || ''
+    }))
+    
+    return {
+      id: brand.id,
+      name: brand.nom,
+      nbControverses: eventsByBrand[brand.id]?.length || 0,
+      nbCondamnations: eventsByBrand[brand.id]?.filter(e => e.condamnation_judiciaire).length || 0,
+      nbDirigeantsControverses: transformedLeaders.length,
+      categories: extractCategories(eventsByBrand[brand.id] || []),
+      evenements: transformEventsWithCategories(eventsByBrand[brand.id] || []),
+      // Extension-specific fields
+      category: brand.category || 'consumer_goods',
+      shortDescription: brand.shortDescription,
+      description: brand.description,
+      imagePath: brand.imagePath,
+      // Dirigeants controversés pour extension (rétrocompatibilité)
+      dirigeants_controverses: transformedLeaders
+    }
+  })
 }
 ```
+
+## 📊 Structures de Données V2 - Dirigeants Normalisés
+
+### Base de Données - Relations
+```sql
+-- Table dirigeants centralisée (V2)
+dirigeants (
+  id SERIAL PRIMARY KEY,
+  nom VARCHAR NOT NULL,
+  controverses TEXT NOT NULL,
+  sources JSON NOT NULL,
+  impact_generique TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+
+-- Table de liaison marque-dirigeant (V2)  
+marque_dirigeant (
+  id SERIAL PRIMARY KEY,
+  marque_id INT REFERENCES Marque(id),
+  dirigeant_id INT REFERENCES dirigeants(id),
+  lien_financier VARCHAR(500) NOT NULL,
+  impact_specifique TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+```
+
+### API Response Format - Extension Compatible
+```javascript
+// Format retourné par l'API (compatibilité extension)
+{
+  "brands": [
+    {
+      "id": 123,
+      "name": "MarqueExample",
+      "nbControverses": 2,
+      "nbCondamnations": 1,
+      "nbDirigeantsControverses": 1,
+      "categories": [
+        { "id": 1, "nom": "Géopolitique", "emoji": "🌍", "couleur": "#red" }
+      ],
+      "evenements": [...],
+      "dirigeants_controverses": [
+        {
+          "id": 45,                           // ID liaison marque_dirigeant
+          "dirigeant_id": 12,                 // ID dirigeant dans table centralisée
+          "dirigeant_nom": "Jean Dupont",
+          "controverses": "Description des controverses...",
+          "sources": ["url1", "url2"],
+          "lien_financier": "Co-fondateur et actionnaire via Otium Capital (100%)",
+          "impact_description": "Impact spécifique ou générique"
+        }
+      ]
+    }
+  ],
+  "version": "2024-08-08T10:30:00.000Z",
+  "checksum": "23-45-1691234567890"
+}
+```
+
+### Migration et Compatibilité
+- **Rétrocompatibilité** : Extensions existantes continuent de fonctionner
+- **Format unifié** : `dirigeants_controverses` standardisé
+- **Performance** : Requêtes optimisées avec relations normalisées
+- **Évolutivité** : Ajout de nouveaux dirigeants sans duplication
 
 ## 🔄 Cache Strategy - Multi-Layer
 

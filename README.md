@@ -88,6 +88,55 @@ Métadonnées de version pour synchronisation intelligente
 ```
 **Cache :** 5 minutes | **Fallback :** updated_at → created_at → timestamp
 
+## 📊 Structure des Données V2 - Dirigeants Normalisés
+
+### Évolution Architecturale
+Cette API supporte désormais une architecture de base de données normalisée pour les dirigeants controversés :
+
+- **V1 (Legacy)** : Données dirigeant dupliquées pour chaque marque
+- **V2 (Actuel)** : Dirigeants centralisés + table de liaison `marque_dirigeant`
+
+### Avantages V2
+- ✅ **Réutilisabilité** : Un dirigeant peut être lié à plusieurs marques
+- ✅ **Performance** : Moins de duplication de données
+- ✅ **Maintenance** : Mise à jour centralisée des informations dirigeant
+- ✅ **Rétrocompatibilité** : Extensions existantes continuent de fonctionner
+
+### Transformation Automatique
+L'API transforme automatiquement les données normalisées V2 au format attendu par les extensions :
+```javascript
+// Base de données V2 (normalisée)
+{
+  marque_dirigeant: [{
+    id: 45,
+    dirigeant_id: 12,
+    lien_financier: "Co-fondateur...",
+    impact_specifique: "100% des achats...",
+    dirigeant: {
+      nom: "Jean Dupont",
+      controverses: "Description...",
+      sources: ["url1", "url2"],
+      impact_generique: "Impact générique..."
+    }
+  }]
+}
+
+// ↓ Transformation API ↓
+
+// Format extension (rétrocompatible)
+{
+  dirigeants_controverses: [{
+    id: 45,                    // ID liaison
+    dirigeant_id: 12,          // ID dirigeant centralisé
+    dirigeant_nom: "Jean Dupont",
+    controverses: "Description...",
+    sources: ["url1", "url2"],
+    lien_financier: "Co-fondateur...",
+    impact_description: "100% des achats..." // impact_specifique || impact_generique
+  }]
+}
+```
+
 ### `GET /api/brands/updates?since=<ISO_DATE>`
 Récupérer les mises à jour depuis une date
 ```json
@@ -103,7 +152,30 @@ Récupérer les mises à jour depuis une date
 Récupérer toutes les données (fallback)
 ```json
 {
-  "brands": [...],
+  "brands": [
+    {
+      "id": 123,
+      "name": "MarqueExample",
+      "nbControverses": 2,
+      "nbCondamnations": 1,
+      "nbDirigeantsControverses": 1,
+      "categories": [
+        { "id": 1, "nom": "Géopolitique", "emoji": "🌍", "couleur": "#red" }
+      ],
+      "evenements": [...],
+      "dirigeants_controverses": [
+        {
+          "id": 45,
+          "dirigeant_id": 12,
+          "dirigeant_nom": "Jean Dupont",
+          "controverses": "Description des controverses...",
+          "sources": ["url1", "url2"],
+          "lien_financier": "Co-fondateur et actionnaire via Otium Capital (100%)",
+          "impact_description": "Impact spécifique ou générique"
+        }
+      ]
+    }
+  ],
   "version": "2024-01-15T10:30:00.000Z",
   "lastUpdated": "2024-01-15T10:30:00.000Z",
   "totalBrands": 42,
