@@ -65,10 +65,18 @@ export const handler = async (event, context) => {
         *,
         marque_dirigeant!marque_id (
           id,
-          dirigeant_nom,
-          controverses,
+          dirigeant_id,
           lien_financier,
-          impact_description
+          impact_specifique,
+          created_at,
+          updated_at,
+          dirigeant:dirigeant_id (
+            id,
+            nom,
+            controverses,
+            sources,
+            impact_generique
+          )
         )
       `)
       .order('nom');
@@ -122,6 +130,17 @@ export const handler = async (event, context) => {
       }
       const nbDirigeantsControverses = dirigeants.length;
       
+      // Transform dirigeants to match extension format
+      const transformedDirigeants = dirigeants.map(liaison => ({
+        id: liaison.id,
+        dirigeant_id: liaison.dirigeant_id,
+        dirigeant_nom: liaison.dirigeant?.nom || '',
+        controverses: liaison.dirigeant?.controverses || '',
+        sources: liaison.dirigeant?.sources || [],
+        lien_financier: liaison.lien_financier,
+        impact_description: liaison.impact_specifique || liaison.dirigeant?.impact_generique || ''
+      }));
+      
       // Extract unique categories from events with their details
       const categoryMap = new Map();
       evenements.forEach(evt => {
@@ -168,7 +187,7 @@ export const handler = async (event, context) => {
         description: marque.description,
         imagePath: marque.imagePath,
         // Add controversial leaders data for extension  
-        dirigeants_controverses: dirigeants
+        dirigeants_controverses: transformedDirigeants
       };
     });
 
