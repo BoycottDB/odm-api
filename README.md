@@ -1,13 +1,20 @@
 # Extension API - Répertoire des Marques à Boycotter
 
-API Serverless (Netlify Functions) optimisée pour la synchronisation des extensions Chrome/Firefox du Répertoire Collaboratif des Marques à Boycotter.
+API Serverless (Netlify Functions) optimisée pour :
+1. **Extensions Chrome/Firefox** - Synchronisation des données avec cache intelligent
+2. **Application Web** - Architecture hybride pour réduire la charge Supabase *(Nouveau)*
 
-## 🎯 Objectif
+## 🎯 Objectifs
 
-Cette API permet à l'extension de :
-- Vérifier s'il y a de nouvelles données disponibles
+### Pour les Extensions
+- Vérifier s'il y a de nouvelles données disponibles  
 - Récupérer les mises à jour incrémentales depuis une date donnée
 - Obtenir l'ensemble complet des données en cas de problème
+
+### Pour l'Application Web *(Nouveau)*
+- Servir de couche de cache optimisée pour les lectures
+- Réduire la charge sur Supabase  
+- Centraliser la logique de requête des données
 
 ## 🏗️ Architecture Serverless
 
@@ -63,7 +70,9 @@ netlify deploy --prod
 
 ## 📡 Endpoints API
 
-### `GET /health`
+### 🏥 Monitoring
+
+#### `GET /health`
 Health check et diagnostics du service
 ```json
 {
@@ -75,7 +84,9 @@ Health check et diagnostics du service
 }
 ```
 
-### `GET /api/brands/version`
+### 🔄 Synchronisation Extension
+
+#### `GET /api/brands/version`
 Métadonnées de version pour synchronisation intelligente
 ```json
 {
@@ -87,6 +98,112 @@ Métadonnées de version pour synchronisation intelligente
 }
 ```
 **Cache :** 5 minutes | **Fallback :** updated_at → created_at → timestamp
+
+### 🌐 Endpoints Application Web *(Nouveau)*
+
+#### `GET /marques`
+Données marques avec recherche et pagination
+```bash
+GET /marques?search=nike&limit=50&offset=0
+```
+```json
+[
+  {
+    "id": 1,
+    "nom": "Nike",
+    "secteur_marque_id": 2,
+    "message_boycott_tips": "...",
+    "dirigeant_controverse": { ... },
+    "secteur_marque": { ... }
+  }
+]
+```
+**Cache :** 20 minutes | **Optimisé pour :** Recherche publique
+
+#### `GET /evenements`
+Événements avec pagination et données complètes
+```bash
+GET /evenements?limit=100&offset=0
+```
+```json
+[
+  {
+    "id": 1,
+    "marque_id": 1,
+    "titre": "Controverse travail des enfants",
+    "date": "2024-01-15",
+    "source_url": "https://...",
+    "condamnation_judiciaire": false,
+    "marque": { ... },
+    "categorie": { ... }
+  }
+]
+```
+**Cache :** 15 minutes | **Optimisé pour :** Timeline publique
+
+#### `GET /categories`
+Catégories d'événements actives
+```json
+[
+  {
+    "id": 1,
+    "nom": "Droits Humains", 
+    "emoji": "⚖️",
+    "couleur": "#dc2626",
+    "ordre": 1,
+    "actif": true
+  }
+]
+```
+**Cache :** 1 heure | **Données quasi-statiques**
+
+#### `GET /dirigeants`
+Dirigeants avec relations marques
+```bash
+GET /dirigeants              # Tous
+GET /dirigeants?id=123       # Spécifique avec marques liées
+```
+```json
+[
+  {
+    "id": 1,
+    "nom": "Bernard Arnault",
+    "controverses": "...",
+    "sources": ["https://..."],
+    "impact_generique": "...",
+    "marques": [
+      {
+        "id": 5,
+        "nom": "LVMH", 
+        "lien_financier": "PDG",
+        "impact_specifique": "...",
+        "liaison_id": 10
+      }
+    ]
+  }
+]
+```
+**Cache :** 30 minutes | **Architecture V2 normalisée**
+
+#### `GET /secteurs-marque`  
+Secteurs pour Boycott Tips
+```bash
+GET /secteurs-marque         # Tous
+GET /secteurs-marque?id=456  # Spécifique
+```
+```json
+[
+  {
+    "id": 1,
+    "nom": "Mode & Textile",
+    "description": "...",
+    "message_boycott_tips": "Privilégiez la seconde main...",
+    "created_at": "2024-01-15T10:30:00.000Z",
+    "updated_at": "2024-01-15T10:30:00.000Z"
+  }
+]
+```
+**Cache :** 1 heure | **Métadonnées stables**
 
 ## 📊 Structure des Données V2 - Dirigeants Normalisés
 
