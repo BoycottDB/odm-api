@@ -246,23 +246,37 @@ const transformBrandsWithLeadersForExtension = (brands, events) => {
       dirigeants = dirigeants ? [dirigeants] : []
     }
     
-    // Transformation dirigeants pour compatibilité extension
-    const transformedLeaders = dirigeants.map(liaison => ({
-      id: liaison.id,
-      dirigeant_id: liaison.dirigeant_id,
-      dirigeant_nom: liaison.dirigeant?.nom || '',
-      controverses: liaison.dirigeant?.controverses || '',
-      sources: liaison.dirigeant?.sources || [],
-      lien_financier: liaison.lien_financier,
-      impact_description: liaison.impact_specifique || liaison.dirigeant?.impact_generique || ''
-    }))
+    // Transformation dirigeants avec toutes les marques liées (enrichissement 2025)
+    const transformedDirigeants = await Promise.all(dirigeants.map(async (liaison) => {
+      // Récupérer toutes les marques pour ce dirigeant
+      const { data: toutesMarquesDuDirigeant } = await supabase
+        .from('marque_dirigeant')
+        .select('marque:Marque!marque_id (id, nom)')
+        .eq('dirigeant_id', liaison.dirigeant_id);
+      
+      const toutesMarques = toutesMarquesDuDirigeant?.map(m => ({
+        id: m.marque.id, 
+        nom: m.marque.nom 
+      })) || [];
+
+      return {
+        id: liaison.id,
+        dirigeant_id: liaison.dirigeant_id,
+        dirigeant_nom: liaison.dirigeant?.nom || '',
+        controverses: liaison.dirigeant?.controverses || '',
+        sources: liaison.dirigeant?.sources || [],
+        lien_financier: liaison.lien_financier,
+        impact_description: liaison.impact_specifique || liaison.dirigeant?.impact_generique || '',
+        toutes_marques: toutesMarques // 🆕 Enrichissement pour navigation web
+      };
+    }));
     
     return {
       id: brand.id,
       name: brand.nom,
       nbControverses: eventsByBrand[brand.id]?.length || 0,
       nbCondamnations: eventsByBrand[brand.id]?.filter(e => e.condamnation_judiciaire).length || 0,
-      nbDirigeantsControverses: transformedLeaders.length,
+      nbDirigeantsControverses: transformedDirigeants.length,
       categories: extractCategories(eventsByBrand[brand.id] || []),
       evenements: transformEventsWithCategories(eventsByBrand[brand.id] || []),
       // Extension-specific fields
@@ -270,8 +284,8 @@ const transformBrandsWithLeadersForExtension = (brands, events) => {
       shortDescription: brand.shortDescription,
       description: brand.description,
       imagePath: brand.imagePath,
-      // Dirigeants controversés pour extension (rétrocompatibilité)
-      dirigeants_controverses: transformedLeaders
+      // Dirigeants controversés pour extension avec marques liées
+      dirigeants_controverses: transformedDirigeants
     }
   })
 }

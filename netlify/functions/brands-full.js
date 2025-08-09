@@ -117,7 +117,7 @@ export const handler = async (event, context) => {
     }
 
     // Transform data for extension compatibility
-    const transformedBrands = marques.map(marque => {
+    const transformedBrands = await Promise.all(marques.map(async (marque) => {
       const evenements = eventsByMarque.get(marque.id) || [];
       
       // Calculate real stats
@@ -130,15 +130,31 @@ export const handler = async (event, context) => {
       }
       const nbDirigeantsControverses = dirigeants.length;
       
-      // Transform dirigeants to match extension format
-      const transformedDirigeants = dirigeants.map(liaison => ({
-        id: liaison.id,
-        dirigeant_id: liaison.dirigeant_id,
-        dirigeant_nom: liaison.dirigeant?.nom || '',
-        controverses: liaison.dirigeant?.controverses || '',
-        sources: liaison.dirigeant?.sources || [],
-        lien_financier: liaison.lien_financier,
-        impact_description: liaison.impact_specifique || liaison.dirigeant?.impact_generique || ''
+      // Transform dirigeants to match extension format with all brands per dirigeant
+      const transformedDirigeants = await Promise.all(dirigeants.map(async (liaison) => {
+        // Récupérer toutes les marques pour ce dirigeant
+        const { data: toutesMarquesDuDirigeant } = await supabase
+          .from('marque_dirigeant')
+          .select(`
+            marque:Marque!marque_id (id, nom)
+          `)
+          .eq('dirigeant_id', liaison.dirigeant_id);
+        
+        const toutesMarques = toutesMarquesDuDirigeant?.map(m => {
+          const marqueData = m.marque;
+          return { id: marqueData.id, nom: marqueData.nom };
+        }) || [];
+
+        return {
+          id: liaison.id,
+          dirigeant_id: liaison.dirigeant_id,
+          dirigeant_nom: liaison.dirigeant?.nom || '',
+          controverses: liaison.dirigeant?.controverses || '',
+          sources: liaison.dirigeant?.sources || [],
+          lien_financier: liaison.lien_financier,
+          impact_description: liaison.impact_specifique || liaison.dirigeant?.impact_generique || '',
+          toutes_marques: toutesMarques
+        };
       }));
       
       // Extract unique categories from events with their details
@@ -189,7 +205,7 @@ export const handler = async (event, context) => {
         // Add controversial leaders data for extension  
         dirigeants_controverses: transformedDirigeants
       };
-    });
+    }));
 
     // Get version metadata
     const { count: totalBrands } = await supabase

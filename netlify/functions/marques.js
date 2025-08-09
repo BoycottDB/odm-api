@@ -103,34 +103,50 @@ export const handler = async (event, context) => {
     if (error) throw error;
 
     // Transform for frontend compatibility (similar to brands-full but with pagination)
-    const transformedBrands = marques?.map(marque => {
-      let dirigeant_controverse = null;
-      
-      // marque_dirigeant is an array, take the first element
-      const dirigeantLiaison = marque.marque_dirigeant?.[0];
-      
-      if (dirigeantLiaison && dirigeantLiaison.dirigeant) {
-        // Transform to legacy format for compatibility
-        dirigeant_controverse = {
-          id: dirigeantLiaison.id,
-          marque_id: marque.id,
-          dirigeant_id: dirigeantLiaison.dirigeant.id,
-          dirigeant_nom: dirigeantLiaison.dirigeant.nom,
-          controverses: dirigeantLiaison.dirigeant.controverses,
-          lien_financier: dirigeantLiaison.lien_financier,
-          impact_description: dirigeantLiaison.impact_specifique || dirigeantLiaison.dirigeant.impact_generique || '',
-          sources: dirigeantLiaison.dirigeant.sources,
-          created_at: dirigeantLiaison.created_at,
-          updated_at: dirigeantLiaison.updated_at
+    const transformedBrands = await Promise.all(
+      (marques || []).map(async (marque) => {
+        let dirigeant_controverse = null;
+        
+        // marque_dirigeant is an array, take the first element
+        const dirigeantLiaison = marque.marque_dirigeant?.[0];
+        
+        if (dirigeantLiaison && dirigeantLiaison.dirigeant) {
+          // Récupérer toutes les marques pour ce dirigeant
+          const { data: toutesMarquesDuDirigeant } = await supabase
+            .from('marque_dirigeant')
+            .select(`
+              marque:Marque!marque_id (id, nom)
+            `)
+            .eq('dirigeant_id', dirigeantLiaison.dirigeant.id);
+          
+          const toutesMarques = toutesMarquesDuDirigeant?.map(m => {
+            const marqueData = m.marque;
+            return { id: marqueData.id, nom: marqueData.nom };
+          }) || [];
+          
+          // Transform to legacy format for compatibility
+          dirigeant_controverse = {
+            id: dirigeantLiaison.id,
+            marque_id: marque.id,
+            dirigeant_id: dirigeantLiaison.dirigeant.id,
+            dirigeant_nom: dirigeantLiaison.dirigeant.nom,
+            controverses: dirigeantLiaison.dirigeant.controverses,
+            lien_financier: dirigeantLiaison.lien_financier,
+            impact_description: dirigeantLiaison.impact_specifique || dirigeantLiaison.dirigeant.impact_generique || '',
+            sources: dirigeantLiaison.dirigeant.sources,
+            created_at: dirigeantLiaison.created_at,
+            updated_at: dirigeantLiaison.updated_at,
+            toutes_marques: toutesMarques
+          };
+        }
+        
+        return {
+          ...marque,
+          dirigeant_controverse,
+          secteur_marque: marque.SecteurMarque || null
         };
-      }
-      
-      return {
-        ...marque,
-        dirigeant_controverse,
-        secteur_marque: marque.SecteurMarque || null
-      };
-    }) || [];
+      })
+    );
 
     // Cache the result
     cache.set(cacheKey, {
