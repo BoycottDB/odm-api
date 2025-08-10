@@ -58,24 +58,25 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Get all brands with their leaders and events with categories
+    // Get all brands with their beneficiaires and events with categories
     const { data: marques, error: marqueError } = await supabase
       .from('Marque')
       .select(`
         *,
-        marque_dirigeant!marque_id (
+        Marque_beneficiaire!marque_id (
           id,
-          dirigeant_id,
+          beneficiaire_id,
           lien_financier,
           impact_specifique,
           created_at,
           updated_at,
-          dirigeant:dirigeant_id (
+          Beneficiaires!marque_beneficiaire_beneficiaire_id_fkey (
             id,
             nom,
             controverses,
             sources,
-            impact_generique
+            impact_generique,
+            type_beneficiaire
           )
         )
       `)
@@ -123,36 +124,37 @@ export const handler = async (event, context) => {
       // Calculate real stats
       const nbControverses = evenements.length;
       const nbCondamnations = evenements.filter(e => e.condamnation_judiciaire === true).length;
-      // Calculate real number of controversial leaders (handle object/array from Supabase)
-      let dirigeants = marque.marque_dirigeant || [];
-      if (!Array.isArray(dirigeants)) {
-        dirigeants = dirigeants ? [dirigeants] : [];
+      // Calculate real number of controversial beneficiaires (handle object/array from Supabase)
+      let beneficiaires = marque.Marque_beneficiaire || [];
+      if (!Array.isArray(beneficiaires)) {
+        beneficiaires = beneficiaires ? [beneficiaires] : [];
       }
-      const nbDirigeantsControverses = dirigeants.length;
+      const nbDirigeantsControverses = beneficiaires.length; // Keep old name for extension compatibility
       
-      // Transform dirigeants to match extension format with all brands per dirigeant
-      const transformedDirigeants = await Promise.all(dirigeants.map(async (liaison) => {
-        // Récupérer toutes les marques pour ce dirigeant
-        const { data: toutesMarquesDuDirigeant } = await supabase
-          .from('marque_dirigeant')
+      // Transform beneficiaires to match extension format with all brands per beneficiaire
+      const transformedDirigeants = await Promise.all(beneficiaires.map(async (liaison) => {
+        // Récupérer toutes les marques pour ce bénéficiaire
+        const { data: toutesMarquesDuBeneficiaire } = await supabase
+          .from('Marque_beneficiaire')
           .select(`
-            marque:Marque!marque_id (id, nom)
+            Marque!marque_id (id, nom)
           `)
-          .eq('dirigeant_id', liaison.dirigeant_id);
+          .eq('beneficiaire_id', liaison.beneficiaire_id);
         
-        const toutesMarques = toutesMarquesDuDirigeant?.map(m => {
-          const marqueData = m.marque;
+        const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => {
+          const marqueData = m.Marque;
           return { id: marqueData.id, nom: marqueData.nom };
         }) || [];
 
         return {
           id: liaison.id,
-          dirigeant_id: liaison.dirigeant_id,
-          dirigeant_nom: liaison.dirigeant?.nom || '',
-          controverses: liaison.dirigeant?.controverses || '',
-          sources: liaison.dirigeant?.sources || [],
+          dirigeant_id: liaison.beneficiaire_id, // Alias pour compatibilité extension
+          dirigeant_nom: liaison.Beneficiaires?.nom || '',
+          controverses: liaison.Beneficiaires?.controverses || '',
+          sources: liaison.Beneficiaires?.sources || [],
           lien_financier: liaison.lien_financier,
-          impact_description: liaison.impact_specifique || liaison.dirigeant?.impact_generique || '',
+          impact_description: liaison.impact_specifique || liaison.Beneficiaires?.impact_generique || '',
+          type_beneficiaire: liaison.Beneficiaires?.type_beneficiaire || 'individu',
           toutes_marques: toutesMarques
         };
       }));
