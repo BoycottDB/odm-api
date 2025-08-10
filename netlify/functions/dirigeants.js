@@ -1,6 +1,6 @@
 /**
  * Netlify Function - Leaders data
- */
+ * 
 import { createClient } from '@supabase/supabase-js';
 
 // Configuration Supabase
@@ -170,3 +170,5 @@ export const handler = async (event, context) => {
     };
   }
 };
+
+ */
