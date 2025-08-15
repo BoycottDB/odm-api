@@ -139,18 +139,43 @@ export const handler = async (event, context) => {
 
       if (error) throw error;
 
-      // Transform for compatibility with existing frontend (DirigeantResult format)
-      const transformedLiaisons = liaisons?.map(liaison => ({
-        id: liaison.id,
-        dirigeant_id: liaison.Beneficiaires.id, // Alias pour compatibilité
-        dirigeant_nom: liaison.Beneficiaires.nom,
-        controverses: liaison.Beneficiaires.controverses,
-        sources: liaison.Beneficiaires.sources,
-        lien_financier: liaison.lien_financier,
-        impact_description: liaison.impact_specifique || liaison.Beneficiaires.impact_generique || 'Impact à définir',
-        type_beneficiaire: liaison.Beneficiaires.type_beneficiaire || 'individu',
-        marque_id: liaison.marque_id
-      })) || [];
+      // Pour chaque liaison, récupérer toutes les marques liées au même bénéficiaire
+      const transformedLiaisons = await Promise.all(
+        (liaisons || []).map(async (liaison) => {
+          // Récupérer toutes les marques liées à ce bénéficiaire
+          const { data: toutesMarques, error: marquesError } = await supabase
+            .from('Marque_beneficiaire')
+            .select(`
+              Marque!marque_id (
+                id,
+                nom
+              )
+            `)
+            .eq('beneficiaire_id', liaison.Beneficiaires.id);
+
+          if (marquesError) {
+            console.warn('Erreur récupération toutes marques:', marquesError);
+          }
+
+          const toutesMarquesFormatted = toutesMarques?.map(m => ({
+            id: m.Marque.id,
+            nom: m.Marque.nom
+          })) || [];
+
+          return {
+            id: liaison.id,
+            dirigeant_id: liaison.Beneficiaires.id, // Alias pour compatibilité
+            dirigeant_nom: liaison.Beneficiaires.nom,
+            controverses: liaison.Beneficiaires.controverses,
+            sources: liaison.Beneficiaires.sources,
+            lien_financier: liaison.lien_financier,
+            impact_description: liaison.impact_specifique || liaison.Beneficiaires.impact_generique || 'Impact à définir',
+            type_beneficiaire: liaison.Beneficiaires.type_beneficiaire || 'individu',
+            marque_id: liaison.marque_id,
+            toutes_marques: toutesMarquesFormatted
+          };
+        })
+      );
 
       cache.set(cacheKey, {
         data: transformedLiaisons,
