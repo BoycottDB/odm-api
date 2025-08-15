@@ -60,24 +60,27 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Build query
+    // Build query - Architecture V2 avec Marque_beneficiaire
     let query = supabase
       .from('Marque')
       .select(`
         *,
-        marque_dirigeant!marque_id (
+        Marque_beneficiaire!marque_id (
           id,
-          dirigeant_id,
+          beneficiaire_id,
           lien_financier,
           impact_specifique,
           created_at,
           updated_at,
-          dirigeant:dirigeant_id (
+          Beneficiaires!marque_beneficiaire_beneficiaire_id_fkey (
             id,
             nom,
             controverses,
             sources,
-            impact_generique
+            impact_generique,
+            type_beneficiaire,
+            created_at,
+            updated_at
           )
         ),
         SecteurMarque!secteur_marque_id (
@@ -105,45 +108,62 @@ export const handler = async (event, context) => {
     // Transform for frontend compatibility (similar to brands-full but with pagination)
     const transformedBrands = await Promise.all(
       (marques || []).map(async (marque) => {
+        // Transformation V2 - Marque_beneficiaire au lieu de marque_dirigeant
+        const beneficiaires_marque = [];
+        
+        if (marque.Marque_beneficiaire && marque.Marque_beneficiaire.length > 0) {
+          for (const liaison of marque.Marque_beneficiaire) {
+            if (liaison.Beneficiaires) {
+              // Récupérer toutes les marques pour ce bénéficiaire
+              const { data: toutesMarquesDuBeneficiaire } = await supabase
+                .from('Marque_beneficiaire')
+                .select(`
+                  Marque!marque_id (id, nom)
+                `)
+                .eq('beneficiaire_id', liaison.Beneficiaires.id);
+              
+              const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => {
+                return { id: m.Marque.id, nom: m.Marque.nom };
+              }) || [];
+              
+              beneficiaires_marque.push({
+                id: liaison.id,
+                lien_financier: liaison.lien_financier,
+                impact_specifique: liaison.impact_specifique,
+                beneficiaire: {
+                  ...liaison.Beneficiaires,
+                  toutes_marques: toutesMarques // ✅ Ajout des toutes_marques
+                }
+              });
+            }
+          }
+        }
+        
+        // Compatibility: Premier bénéficiaire pour dirigeant_controverse
         let dirigeant_controverse = null;
-        
-        // marque_dirigeant is an array, take the first element
-        const dirigeantLiaison = marque.marque_dirigeant?.[0];
-        
-        if (dirigeantLiaison && dirigeantLiaison.dirigeant) {
-          // Récupérer toutes les marques pour ce dirigeant
-          const { data: toutesMarquesDuDirigeant } = await supabase
-            .from('marque_dirigeant')
-            .select(`
-              marque:Marque!marque_id (id, nom)
-            `)
-            .eq('dirigeant_id', dirigeantLiaison.dirigeant.id);
-          
-          const toutesMarques = toutesMarquesDuDirigeant?.map(m => {
-            const marqueData = m.marque;
-            return { id: marqueData.id, nom: marqueData.nom };
-          }) || [];
-          
-          // Transform to legacy format for compatibility
+        if (beneficiaires_marque.length > 0) {
+          const premierBeneficiaire = beneficiaires_marque[0];
           dirigeant_controverse = {
-            id: dirigeantLiaison.id,
+            id: premierBeneficiaire.id,
             marque_id: marque.id,
-            dirigeant_id: dirigeantLiaison.dirigeant.id,
-            dirigeant_nom: dirigeantLiaison.dirigeant.nom,
-            controverses: dirigeantLiaison.dirigeant.controverses,
-            lien_financier: dirigeantLiaison.lien_financier,
-            impact_description: dirigeantLiaison.impact_specifique || dirigeantLiaison.dirigeant.impact_generique || '',
-            sources: dirigeantLiaison.dirigeant.sources,
-            created_at: dirigeantLiaison.created_at,
-            updated_at: dirigeantLiaison.updated_at,
-            toutes_marques: toutesMarques
+            beneficiaire_id: premierBeneficiaire.beneficiaire.id,
+            dirigeant_nom: premierBeneficiaire.beneficiaire.nom,
+            controverses: premierBeneficiaire.beneficiaire.controverses,
+            lien_financier: premierBeneficiaire.lien_financier,
+            impact_description: premierBeneficiaire.impact_specifique || premierBeneficiaire.beneficiaire.impact_generique || '',
+            sources: premierBeneficiaire.beneficiaire.sources,
+            created_at: premierBeneficiaire.beneficiaire.created_at,
+            updated_at: premierBeneficiaire.beneficiaire.updated_at,
+            toutes_marques: premierBeneficiaire.beneficiaire.toutes_marques,
+            type_beneficiaire: premierBeneficiaire.beneficiaire.type_beneficiaire
           };
         }
         
         return {
           ...marque,
-          dirigeant_controverse,
-          secteur_marque: marque.SecteurMarque || null
+          beneficiaires_marque, // ✅ Nouvelle structure V2
+          dirigeant_controverse, // ✅ Rétrocompatibilité
+          secteur_marque: marque.SecteurMarque?.[0] || null
         };
       })
     );

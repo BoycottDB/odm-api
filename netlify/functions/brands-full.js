@@ -204,7 +204,7 @@ export const handler = async (event, context) => {
         shortDescription: marque.shortDescription,
         description: marque.description,
         imagePath: marque.imagePath,
-        // Add controversial leaders data for extension  
+        // Add controversial beneficiaries data for extension (kept as dirigeants_controverses for compatibility)  
         dirigeants_controverses: transformedDirigeants
       };
     }));
