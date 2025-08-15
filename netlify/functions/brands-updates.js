@@ -19,7 +19,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-export const handler = async (event, context) => {
+export const handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -290,7 +290,7 @@ export const handler = async (event, context) => {
         description: marque.description,
         imagePath: marque.imagePath,
         lastUpdated: marque.updated_at || marque.created_at || new Date().toISOString(),
-        // Add controversial leaders data for extension
+        // Add controversial beneficiaries data for extension (kept as dirigeants_controverses for compatibility)
         dirigeants_controverses: transformedDirigeants
       };
     }));
