@@ -99,8 +99,6 @@ export const handler = async (event) => {
             beneficiaire:Beneficiaires!marque_beneficiaire_beneficiaire_id_fkey (
               id,
               nom,
-              controverses,
-              sources,
               impact_generique,
               type_beneficiaire
             )
@@ -129,8 +127,6 @@ export const handler = async (event) => {
             beneficiaire:Beneficiaires!marque_beneficiaire_beneficiaire_id_fkey (
               id,
               nom,
-              controverses,
-              sources,
               impact_generique,
               type_beneficiaire
             )
@@ -231,12 +227,24 @@ export const handler = async (event) => {
           return { id: marqueData.id, nom: marqueData.nom };
         }) || [];
 
+        // Récupérer les controverses structurées pour ce bénéficiaire
+        const { data: controverses } = await supabase
+          .from('controverse_beneficiaire')
+          .select('*')
+          .eq('beneficiaire_id', liaison.beneficiaire_id)
+          .order('ordre');
+
         return {
           id: liaison.id,
           dirigeant_id: liaison.beneficiaire_id, // Alias for extension compatibility
           dirigeant_nom: liaison.beneficiaire?.nom || '',
-          controverses: liaison.beneficiaire?.controverses || '',
-          sources: liaison.beneficiaire?.sources || [],
+          // ✅ Transformation legacy : concaténer les titres
+          controverses: (controverses || [])
+            .map(c => c.titre)
+            .join(' | ') || '',
+          // ✅ Transformation legacy : extraire les URLs
+          sources: (controverses || [])
+            .map(c => c.source_url) || [],
           lien_financier: liaison.lien_financier,
           impact_description: liaison.impact_specifique || liaison.beneficiaire?.impact_generique || '',
           type_beneficiaire: liaison.beneficiaire?.type_beneficiaire || 'individu',

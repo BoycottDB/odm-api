@@ -60,7 +60,7 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Build query - Architecture V2 avec Marque_beneficiaire
+    // Build query - Architecture V2 avec Marque_beneficiaire et controverses structurées
     let query = supabase
       .from('Marque')
       .select(`
@@ -75,8 +75,6 @@ export const handler = async (event, context) => {
           Beneficiaires!marque_beneficiaire_beneficiaire_id_fkey (
             id,
             nom,
-            controverses,
-            sources,
             impact_generique,
             type_beneficiaire,
             created_at,
@@ -108,7 +106,7 @@ export const handler = async (event, context) => {
     // Transform for frontend compatibility (similar to brands-full but with pagination)
     const transformedBrands = await Promise.all(
       (marques || []).map(async (marque) => {
-        // Transformation V2 - Marque_beneficiaire au lieu de marque_dirigeant
+        // Transformation V2 - Marque_beneficiaire avec controverses structurées
         const beneficiaires_marque = [];
         
         if (marque.Marque_beneficiaire && marque.Marque_beneficiaire.length > 0) {
@@ -125,6 +123,13 @@ export const handler = async (event, context) => {
               const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => {
                 return { id: m.Marque.id, nom: m.Marque.nom };
               }) || [];
+
+              // Récupérer les controverses structurées pour ce bénéficiaire
+              const { data: controverses } = await supabase
+                .from('controverse_beneficiaire')
+                .select('*')
+                .eq('beneficiaire_id', liaison.Beneficiaires.id)
+                .order('ordre');
               
               beneficiaires_marque.push({
                 id: liaison.id,
@@ -132,26 +137,34 @@ export const handler = async (event, context) => {
                 impact_specifique: liaison.impact_specifique,
                 beneficiaire: {
                   ...liaison.Beneficiaires,
-                  toutes_marques: toutesMarques // ✅ Ajout des toutes_marques
+                  controverses: controverses || [], // ✅ Nouvelles controverses structurées
+                  toutes_marques: toutesMarques
                 }
               });
             }
           }
         }
         
-        // Compatibility: Premier bénéficiaire pour dirigeant_controverse
+        // Compatibility: Premier bénéficiaire pour dirigeant_controverse avec transformation legacy
         let dirigeant_controverse = null;
         if (beneficiaires_marque.length > 0) {
           const premierBeneficiaire = beneficiaires_marque[0];
+          const controversesStructurees = premierBeneficiaire.beneficiaire.controverses || [];
+          
           dirigeant_controverse = {
             id: premierBeneficiaire.id,
             marque_id: marque.id,
             beneficiaire_id: premierBeneficiaire.beneficiaire.id,
             dirigeant_nom: premierBeneficiaire.beneficiaire.nom,
-            controverses: premierBeneficiaire.beneficiaire.controverses,
+            // ✅ Transformation legacy : concaténer les titres
+            controverses: controversesStructurees
+              .map(c => c.titre)
+              .join(' | ') || '',
             lien_financier: premierBeneficiaire.lien_financier,
             impact_description: premierBeneficiaire.impact_specifique || premierBeneficiaire.beneficiaire.impact_generique || '',
-            sources: premierBeneficiaire.beneficiaire.sources,
+            // ✅ Transformation legacy : extraire les URLs
+            sources: controversesStructurees
+              .map(c => c.source_url) || [],
             created_at: premierBeneficiaire.beneficiaire.created_at,
             updated_at: premierBeneficiaire.beneficiaire.updated_at,
             toutes_marques: premierBeneficiaire.beneficiaire.toutes_marques,
