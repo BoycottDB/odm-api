@@ -66,7 +66,8 @@ export const handler = async (event, context) => {
       const { data: beneficiaire, error } = await supabase
         .from('Beneficiaires')
         .select(`
-          *,
+          id, nom, impact_generique, type_beneficiaire, created_at, updated_at,
+          controverses:controverse_beneficiaire(*),
           Marque_beneficiaire!marque_beneficiaire_beneficiaire_id_fkey (
             id,
             marque_id,
@@ -87,8 +88,8 @@ export const handler = async (event, context) => {
       const transformedBeneficiaire = {
         id: beneficiaire.id,
         nom: beneficiaire.nom,
-        controverses: beneficiaire.controverses,
-        sources: beneficiaire.sources,
+        // ✅ NOUVEAU : Transformer controverses structurées → format legacy
+        controverses: beneficiaire.controverses || [],
         impact_generique: beneficiaire.impact_generique,
         type_beneficiaire: beneficiaire.type_beneficiaire || 'individu',
         marques: beneficiaire.Marque_beneficiaire?.map(liaison => ({
@@ -126,12 +127,11 @@ export const handler = async (event, context) => {
           Beneficiaires!marque_beneficiaire_beneficiaire_id_fkey (
             id,
             nom,
-            controverses,
-            sources,
             impact_generique,
             type_beneficiaire,
             created_at,
-            updated_at
+            updated_at,
+            controverses:controverse_beneficiaire(*)
           )
         `)
         .eq('marque_id', marqueId)
@@ -166,8 +166,13 @@ export const handler = async (event, context) => {
             id: liaison.id,
             dirigeant_id: liaison.Beneficiaires.id, // Alias pour compatibilité
             dirigeant_nom: liaison.Beneficiaires.nom,
-            controverses: liaison.Beneficiaires.controverses,
-            sources: liaison.Beneficiaires.sources,
+            // ✅ Transformation pour compatibilité extension : concaténer les titres
+            controverses: (liaison.Beneficiaires.controverses || [])
+              .map(c => c.titre)
+              .join(' | ') || '',
+            // ✅ Transformation sources : extraire les URLs
+            sources: (liaison.Beneficiaires.controverses || [])
+              .map(c => c.source_url) || [],
             lien_financier: liaison.lien_financier,
             impact_description: liaison.impact_specifique || liaison.Beneficiaires.impact_generique || 'Impact à définir',
             type_beneficiaire: liaison.Beneficiaires.type_beneficiaire || 'individu',
@@ -193,7 +198,8 @@ export const handler = async (event, context) => {
       const { data: beneficiaires, error } = await supabase
         .from('Beneficiaires')
         .select(`
-          *,
+          id, nom, impact_generique, type_beneficiaire, created_at, updated_at,
+          controverses:controverse_beneficiaire(*),
           Marque_beneficiaire!marque_beneficiaire_beneficiaire_id_fkey (
             id,
             marque_id,
@@ -213,8 +219,8 @@ export const handler = async (event, context) => {
       const transformedBeneficiaires = beneficiaires?.map(beneficiaire => ({
         id: beneficiaire.id,
         nom: beneficiaire.nom,
-        controverses: beneficiaire.controverses,
-        sources: beneficiaire.sources,
+        // ✅ NOUVEAU : Controverses structurées
+        controverses: beneficiaire.controverses || [],
         impact_generique: beneficiaire.impact_generique,
         type_beneficiaire: beneficiaire.type_beneficiaire || 'individu',
         marques: beneficiaire.Marque_beneficiaire?.map(liaison => ({
