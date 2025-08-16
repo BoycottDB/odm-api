@@ -176,7 +176,7 @@ export const handler = async (event, context) => {
           ...marque,
           beneficiaires_marque, // ✅ Nouvelle structure V2
           dirigeant_controverse, // ✅ Rétrocompatibilité
-          secteur_marque: marque.SecteurMarque?.[0] || null
+          secteur_marque: marque.SecteurMarque || null
         };
       })
     );
