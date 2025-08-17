@@ -103,46 +103,115 @@ export const handler = async (event, context) => {
 
     if (error) throw error;
 
-    // Transform for frontend compatibility (similar to brands-full but with pagination)
+    // Transform for frontend compatibility avec relations transitives
     const transformedBrands = await Promise.all(
       (marques || []).map(async (marque) => {
-        // Transformation V2 - Marque_beneficiaire avec controverses structurées
-        const beneficiaires_marque = [];
+        // 1. Récupérer les bénéficiaires directement liés à la marque
+        const liaisonsDirectes = marque.Marque_beneficiaire || [];
         
-        if (marque.Marque_beneficiaire && marque.Marque_beneficiaire.length > 0) {
-          for (const liaison of marque.Marque_beneficiaire) {
-            if (liaison.Beneficiaires) {
-              // Récupérer toutes les marques pour ce bénéficiaire
-              const { data: toutesMarquesDuBeneficiaire } = await supabase
-                .from('Marque_beneficiaire')
-                .select(`
-                  Marque!marque_id (id, nom)
-                `)
-                .eq('beneficiaire_id', liaison.Beneficiaires.id);
-              
-              const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => {
-                return { id: m.Marque.id, nom: m.Marque.nom };
-              }) || [];
+        // 2. Pour chaque bénéficiaire direct, récupérer ses relations transitives
+        const beneficiairesTransitifs = [];
+        
+        for (const liaison of liaisonsDirectes) {
+          if (liaison.Beneficiaires) {
+            // Récupérer les bénéficiaires qui ont des relations vers ce bénéficiaire
+            const { data: relationsTransitives, error: transError } = await supabase
+              .from('beneficiaire_relation')
+              .select(`
+                id,
+                beneficiaire_source_id,
+                beneficiaire_cible_id,
+                description_relation,
+                beneficiaire_source:Beneficiaires!beneficiaire_relation_beneficiaire_source_id_fkey (
+                  id,
+                  nom,
+                  impact_generique,
+                  type_beneficiaire
+                )
+              `)
+              .eq('beneficiaire_cible_id', liaison.Beneficiaires.id);
 
-              // Récupérer les controverses structurées pour ce bénéficiaire
-              const { data: controverses } = await supabase
-                .from('controverse_beneficiaire')
-                .select('*')
-                .eq('beneficiaire_id', liaison.Beneficiaires.id)
-                .order('ordre');
-              
-              beneficiaires_marque.push({
-                id: liaison.id,
-                lien_financier: liaison.lien_financier,
-                impact_specifique: liaison.impact_specifique,
-                beneficiaire: {
-                  ...liaison.Beneficiaires,
-                  controverses: controverses || [], // ✅ Nouvelles controverses structurées
-                  toutes_marques: toutesMarques
-                }
-              });
+            if (!transError && relationsTransitives?.length > 0) {
+              beneficiairesTransitifs.push(...relationsTransitives.map(rel => ({
+                ...rel,
+                marque_cible_id: marque.id,
+                nom_cible: liaison.Beneficiaires.nom
+              })));
             }
           }
+        }
+        
+        // 3. Transformation des bénéficiaires directs
+        const beneficiaires_marque = [];
+        
+        for (const liaison of liaisonsDirectes) {
+          if (liaison.Beneficiaires) {
+            // Récupérer toutes les marques pour ce bénéficiaire
+            const { data: toutesMarquesDuBeneficiaire } = await supabase
+              .from('Marque_beneficiaire')
+              .select(`
+                Marque!marque_id (id, nom)
+              `)
+              .eq('beneficiaire_id', liaison.Beneficiaires.id);
+            
+            const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => {
+              return { id: m.Marque.id, nom: m.Marque.nom };
+            }) || [];
+
+
+            // Récupérer les controverses structurées pour ce bénéficiaire
+            const { data: controverses } = await supabase
+              .from('controverse_beneficiaire')
+              .select('*')
+              .eq('beneficiaire_id', liaison.Beneficiaires.id)
+              .order('ordre');
+            
+            beneficiaires_marque.push({
+              id: liaison.id,
+              lien_financier: liaison.lien_financier,
+              impact_specifique: liaison.impact_specifique,
+              source_lien: 'direct',
+              beneficiaire: {
+                ...liaison.Beneficiaires,
+                controverses: controverses || [], // ✅ Nouvelles controverses structurées
+                toutes_marques: toutesMarques
+              }
+            });
+          }
+        }
+        
+        // 4. Transformation des bénéficiaires transitifs
+        for (const relation of beneficiairesTransitifs) {
+          // Récupérer toutes les marques pour ce bénéficiaire transitif
+          const { data: toutesMarquesDuBeneficiaire } = await supabase
+            .from('Marque_beneficiaire')
+            .select(`
+              Marque!marque_id (id, nom)
+            `)
+            .eq('beneficiaire_id', relation.beneficiaire_source.id);
+          
+          const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => {
+            return { id: m.Marque.id, nom: m.Marque.nom };
+          }) || [];
+
+          // Récupérer les controverses structurées pour ce bénéficiaire transitif
+          const { data: controverses } = await supabase
+            .from('controverse_beneficiaire')
+            .select('*')
+            .eq('beneficiaire_id', relation.beneficiaire_source.id)
+            .order('ordre');
+          
+          beneficiaires_marque.push({
+            id: `transitif-${relation.id}`, // ID unique pour éviter les doublons
+            lien_financier: `${relation.description_relation}`,
+            impact_specifique: relation.beneficiaire_source.impact_generique || undefined,
+            source_lien: 'transitif',
+            beneficiaire: {
+              ...relation.beneficiaire_source,
+              controverses: controverses || [],
+              toutes_marques: toutesMarques
+            }
+          });
         }
         
         // Compatibility: Premier bénéficiaire pour dirigeant_controverse avec transformation legacy
@@ -168,7 +237,8 @@ export const handler = async (event, context) => {
             created_at: premierBeneficiaire.beneficiaire.created_at,
             updated_at: premierBeneficiaire.beneficiaire.updated_at,
             toutes_marques: premierBeneficiaire.beneficiaire.toutes_marques,
-            type_beneficiaire: premierBeneficiaire.beneficiaire.type_beneficiaire
+            type_beneficiaire: premierBeneficiaire.beneficiaire.type_beneficiaire,
+            source_lien: premierBeneficiaire.source_lien || 'direct'
           };
         }
         

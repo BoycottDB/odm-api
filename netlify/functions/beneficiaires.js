@@ -113,8 +113,9 @@ export const handler = async (event, context) => {
       };
 
     } else if (marqueId) {
-      // Get beneficiaires for specific marque (pour compatibilité API dirigeants)
-      const { data: liaisons, error } = await supabase
+      // Get beneficiaires for specific marque WITH TRANSITIVE RELATIONS
+      // 1. Récupérer les bénéficiaires directement liés à la marque
+      const { data: liaisonsDirectes, error: directError } = await supabase
         .from('Marque_beneficiaire')
         .select(`
           id,
@@ -137,11 +138,43 @@ export const handler = async (event, context) => {
         .eq('marque_id', marqueId)
         .order('created_at', { ascending: false });
 
+      if (directError) throw directError;
+
+      // 2. Pour chaque bénéficiaire direct, récupérer ses relations transitives
+      const beneficiairesTransitifs = [];
+      
+      for (const liaison of liaisonsDirectes || []) {
+        // Récupérer les bénéficiaires qui ont des relations vers ce bénéficiaire
+        const { data: relationsTransitives, error: transError } = await supabase
+          .from('beneficiaire_relation')
+          .select(`
+            id,
+            beneficiaire_source_id,
+            beneficiaire_cible_id,
+            description_relation,
+            beneficiaire_source:Beneficiaires!beneficiaire_relation_beneficiaire_source_id_fkey (
+              id,
+              nom,
+              impact_generique,
+              type_beneficiaire,
+              controverses:controverse_beneficiaire(*)
+            )
+          `)
+          .eq('beneficiaire_cible_id', liaison.Beneficiaires.id);
+
+        if (!transError && relationsTransitives?.length > 0) {
+          beneficiairesTransitifs.push(...relationsTransitives);
+        }
+      }
+
+      // 3. Combiner liaisons directes et transitives
+      const liaisons = liaisonsDirectes || [];
+
       if (error) throw error;
 
-      // Pour chaque liaison, récupérer toutes les marques liées au même bénéficiaire
-      const transformedLiaisons = await Promise.all(
-        (liaisons || []).map(async (liaison) => {
+      // 4. Traiter les liaisons directes
+      const transformedDirectes = await Promise.all(
+        liaisons.map(async (liaison) => {
           // Récupérer toutes les marques liées à ce bénéficiaire
           const { data: toutesMarques, error: marquesError } = await supabase
             .from('Marque_beneficiaire')
@@ -157,10 +190,15 @@ export const handler = async (event, context) => {
             console.warn('Erreur récupération toutes marques:', marquesError);
           }
 
-          const toutesMarquesFormatted = toutesMarques?.map(m => ({
-            id: m.Marque.id,
-            nom: m.Marque.nom
-          })) || [];
+          // Séparer les marques directes et indirectes
+          const marquesDirectes = toutesMarques?.filter(m => m.Marque.id !== parseInt(marqueId))
+            .map(m => ({
+              id: m.Marque.id,
+              nom: m.Marque.nom
+            })) || [];
+
+          // Pour les marques indirectes, on collectera plus tard via les relations transitives
+          const marquesIndirectes = {};
 
           return {
             id: liaison.id,
@@ -175,22 +213,90 @@ export const handler = async (event, context) => {
               .map(c => c.source_url) || [],
             lien_financier: liaison.lien_financier,
             impact_description: liaison.impact_specifique || liaison.Beneficiaires.impact_generique || 'Impact à définir',
-            type_beneficiaire: liaison.Beneficiaires.type_beneficiaire || 'individu',
+            type_beneficiaire: liaison.Beneficiaires.type_beneficiaire || 'groupe',
             marque_id: liaison.marque_id,
-            toutes_marques: toutesMarquesFormatted
+            // ✅ NOUVEAU : Structure séparée pour marques directes/indirectes
+            marques_directes: marquesDirectes,
+            marques_indirectes: marquesIndirectes,
+            // Garder l'ancien format pour rétrocompatibilité
+            toutes_marques: toutesMarques?.map(m => ({
+              id: m.Marque.id,
+              nom: m.Marque.nom
+            })) || [],
+            source_lien: 'direct'
           };
         })
       );
 
+      // 5. Note: La logique des marques indirectes est maintenant dans marques.js
+      // car l'application utilise l'endpoint /marques, pas /beneficiaires
+
+      // 6. Traiter les bénéficiaires transitifs comme entités séparées
+      const transformedTransitifs = await Promise.all(
+        beneficiairesTransitifs.map(async (relation) => {
+          // Récupérer toutes les marques liées à ce bénéficiaire
+          const { data: toutesMarques, error: marquesError } = await supabase
+            .from('Marque_beneficiaire')
+            .select(`
+              Marque!marque_id (
+                id,
+                nom
+              )
+            `)
+            .eq('beneficiaire_id', relation.beneficiaire_source.id);
+
+          if (marquesError) {
+            console.warn('Erreur récupération toutes marques transitif:', marquesError);
+          }
+
+          const marquesDirectes = toutesMarques?.filter(m => m.Marque.id !== parseInt(marqueId))
+            .map(m => ({
+              id: m.Marque.id,
+              nom: m.Marque.nom
+            })) || [];
+
+          // Trouver le bénéficiaire cible pour le message
+          const beneficiaireCible = liaisons.find(l => l.Beneficiaires.id === relation.beneficiaire_cible_id);
+          const nomCible = beneficiaireCible?.Beneficiaires.nom || 'inconnu';
+
+          return {
+            id: `transitif-${relation.id}`, // ID unique pour éviter les doublons
+            dirigeant_id: relation.beneficiaire_source.id,
+            dirigeant_nom: relation.beneficiaire_source.nom,
+            controverses: (relation.beneficiaire_source.controverses || [])
+              .map(c => c.titre)
+              .join(' | ') || '',
+            sources: (relation.beneficiaire_source.controverses || [])
+              .map(c => c.source_url) || [],
+            lien_financier: relation.description_relation,
+            impact_description: relation.beneficiaire_source.impact_generique || 'Impact à définir',
+            type_beneficiaire: relation.beneficiaire_source.type_beneficiaire || 'groupe',
+            marque_id: parseInt(marqueId), // Marque d'origine
+            // ✅ NOUVEAU : Structure séparée pour marques directes/indirectes
+            marques_directes: marquesDirectes,
+            marques_indirectes: {}, // Pas de marques indirectes pour les transitifs
+            // Garder l'ancien format pour rétrocompatibilité
+            toutes_marques: toutesMarques?.map(m => ({
+              id: m.Marque.id,
+              nom: m.Marque.nom
+            })) || [],
+            source_lien: 'transitif'
+          };
+        })
+      );
+
+      // 7. Combiner et retourner tous les bénéficiaires
+      const allTransformed = [...transformedDirectes, ...transformedTransitifs];
+
       cache.set(cacheKey, {
-        data: transformedLiaisons,
+        data: allTransformed,
         timestamp: now
       });
 
       return {
         statusCode: 200,
         headers: { ...headers, 'X-Cache': 'MISS' },
-        body: JSON.stringify(transformedLiaisons)
+        body: JSON.stringify(allTransformed)
       };
 
     } else {
