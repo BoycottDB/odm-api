@@ -114,7 +114,8 @@ export const handler = async (event, context) => {
         
         for (const liaison of liaisonsDirectes) {
           if (liaison.Beneficiaires) {
-            // Récupérer les bénéficiaires qui ont des relations vers ce bénéficiaire
+            // Récupérer les bénéficiaires qui bénéficient DE ce bénéficiaire (relations sortantes)
+            // Logique: si Nestlé → BlackRock, alors pour Herta (qui va vers Nestlé), BlackRock est transitif
             const { data: relationsTransitives, error: transError } = await supabase
               .from('beneficiaire_relation')
               .select(`
@@ -122,20 +123,20 @@ export const handler = async (event, context) => {
                 beneficiaire_source_id,
                 beneficiaire_cible_id,
                 description_relation,
-                beneficiaire_source:Beneficiaires!beneficiaire_relation_beneficiaire_source_id_fkey (
+                beneficiaire_cible:Beneficiaires!beneficiaire_relation_beneficiaire_cible_id_fkey (
                   id,
                   nom,
                   impact_generique,
                   type_beneficiaire
                 )
               `)
-              .eq('beneficiaire_cible_id', liaison.Beneficiaires.id);
+              .eq('beneficiaire_source_id', liaison.Beneficiaires.id);
 
             if (!transError && relationsTransitives?.length > 0) {
               beneficiairesTransitifs.push(...relationsTransitives.map(rel => ({
                 ...rel,
                 marque_cible_id: marque.id,
-                nom_cible: liaison.Beneficiaires.nom
+                nom_source: liaison.Beneficiaires.nom // Nom du bénéficiaire source (intermédiaire)
               })));
             }
           }
@@ -158,6 +159,46 @@ export const handler = async (event, context) => {
               return { id: m.Marque.id, nom: m.Marque.nom };
             }) || [];
 
+            // Calculer les marques directes (exclure la marque actuelle)
+            const marques_directes = toutesMarques.filter(m => m.id !== marque.id);
+
+            // Calculer les marques indirectes via les relations transitives
+            const marques_indirectes = {};
+            
+            // Pour tous les bénéficiaires (directs ET transitifs), calculer les marques indirectes
+            // On cherche les relations entrantes vers ce bénéficiaire (qui profitent À ce bénéficiaire)
+            const { data: relationsEntrantes } = await supabase
+              .from('beneficiaire_relation')
+              .select(`
+                id,
+                beneficiaire_source_id,
+                description_relation,
+                beneficiaire_source:Beneficiaires!beneficiaire_relation_beneficiaire_source_id_fkey (
+                  id,
+                  nom
+                )
+              `)
+              .eq('beneficiaire_cible_id', liaison.Beneficiaires.id);
+
+            if (relationsEntrantes?.length > 0) {
+              for (const relationEntrante of relationsEntrantes) {
+                // Pour chaque bénéficiaire source, récupérer toutes ses marques
+                const { data: marquesIntermediaires } = await supabase
+                  .from('Marque_beneficiaire')
+                  .select(`
+                    Marque!marque_id (id, nom)
+                  `)
+                  .eq('beneficiaire_id', relationEntrante.beneficiaire_source_id);
+
+                if (marquesIntermediaires?.length > 0) {
+                  const nomBeneficiaireIntermediaire = relationEntrante.beneficiaire_source.nom;
+                  marques_indirectes[nomBeneficiaireIntermediaire] = marquesIntermediaires.map(m => ({
+                    id: m.Marque.id,
+                    nom: m.Marque.nom
+                  }));
+                }
+              }
+            }
 
             // Récupérer les controverses structurées pour ce bénéficiaire
             const { data: controverses } = await supabase
@@ -174,7 +215,9 @@ export const handler = async (event, context) => {
               beneficiaire: {
                 ...liaison.Beneficiaires,
                 controverses: controverses || [], // ✅ Nouvelles controverses structurées
-                toutes_marques: toutesMarques
+                toutes_marques: toutesMarques,
+                marques_directes: marques_directes, // ✅ Nouvelles propriétés
+                marques_indirectes: marques_indirectes // ✅ Nouvelles propriétés
               }
             });
           }
@@ -182,34 +225,64 @@ export const handler = async (event, context) => {
         
         // 4. Transformation des bénéficiaires transitifs
         for (const relation of beneficiairesTransitifs) {
-          // Récupérer toutes les marques pour ce bénéficiaire transitif
+          // Récupérer toutes les marques pour ce bénéficiaire transitif (cible de la relation)
           const { data: toutesMarquesDuBeneficiaire } = await supabase
             .from('Marque_beneficiaire')
             .select(`
               Marque!marque_id (id, nom)
             `)
-            .eq('beneficiaire_id', relation.beneficiaire_source.id);
+            .eq('beneficiaire_id', relation.beneficiaire_cible.id);
           
           const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => {
             return { id: m.Marque.id, nom: m.Marque.nom };
           }) || [];
 
-          // Récupérer les controverses structurées pour ce bénéficiaire transitif
+          // Calculer les marques directes (exclure la marque actuelle)
+          const marques_directes = toutesMarques.filter(m => m.id !== marque.id);
+
+          // Calculer les marques indirectes pour les bénéficiaires transitifs
+          const marques_indirectes = {};
+          
+          // Pour un bénéficiaire transitif (ex: BlackRock), les marques indirectes sont
+          // les marques des bénéficiaires intermédiaires (ex: Nestlé)
+          // relation.beneficiaire_cible_id = ID du bénéficiaire cible (BlackRock)
+          // relation.nom_cible = nom du bénéficiaire intermédiaire par lequel on passe (Nestlé)
+          
+          // Pour les bénéficiaires transitifs, les marques indirectes sont celles du bénéficiaire source (intermédiaire)
+          // Exemple: BlackRock (transitif) reçoit indirectement les marques de Nestlé (source/intermédiaire)
+          const { data: marquesIntermediaires } = await supabase
+            .from('Marque_beneficiaire')
+            .select(`
+              Marque!marque_id (id, nom)
+            `)
+            .eq('beneficiaire_id', relation.beneficiaire_source_id); // ID du bénéficiaire source/intermédiaire
+
+          if (marquesIntermediaires?.length > 0) {
+            // Grouper par nom du bénéficiaire intermédiaire (source)
+            marques_indirectes[relation.nom_source] = marquesIntermediaires.map(m => ({
+              id: m.Marque.id,
+              nom: m.Marque.nom
+            }));
+          }
+
+          // Récupérer les controverses structurées pour ce bénéficiaire transitif (cible)
           const { data: controverses } = await supabase
             .from('controverse_beneficiaire')
             .select('*')
-            .eq('beneficiaire_id', relation.beneficiaire_source.id)
+            .eq('beneficiaire_id', relation.beneficiaire_cible.id)
             .order('ordre');
           
           beneficiaires_marque.push({
             id: `transitif-${relation.id}`, // ID unique pour éviter les doublons
             lien_financier: `${relation.description_relation}`,
-            impact_specifique: relation.beneficiaire_source.impact_generique || undefined,
+            impact_specifique: relation.beneficiaire_cible.impact_generique || undefined,
             source_lien: 'transitif',
             beneficiaire: {
-              ...relation.beneficiaire_source,
+              ...relation.beneficiaire_cible,
               controverses: controverses || [],
-              toutes_marques: toutesMarques
+              toutes_marques: toutesMarques,
+              marques_directes: marques_directes, // ✅ Nouvelles propriétés
+              marques_indirectes: marques_indirectes // ✅ Nouvelles propriétés
             }
           });
         }
