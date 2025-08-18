@@ -240,6 +240,39 @@ Marques des bénéficiaires qui profitent au bénéficiaire via relations transi
 ### Avantages V2
 - ✅ **Réutilisabilité** : Un dirigeant peut être lié à plusieurs marques
 - ✅ **Performance** : Moins de duplication de données
+- ✅ **Sections marques** : Distinction directes vs indirectes
+- ✅ **Relations transitives** : Support des bénéficiaires en cascade
+
+### ⚠️ Dette Technique - Compatibilité Legacy
+
+**Problème :** L'extension browser utilise encore l'ancien format `dirigeant_controverse`
+
+**Impact actuel :**
+```json
+{
+  "dirigeant_controverse": {
+    "controverses": "Titre 1 | Titre 2",  // ❌ String concaténée (legacy)
+    "sources": ["url1", "url2"]            // ❌ Array simple (legacy)
+  },
+  "beneficiaires_marque": [{
+    "beneficiaire": {
+      "controverses": [{                   // ✅ Objets structurés (V2)
+        "titre": "Titre 1",
+        "source_url": "url1"
+      }],
+      "marques_directes": [...],           // ✅ Nouvelles propriétés (V2)
+      "marques_indirectes": {...}
+    }
+  }]
+}
+```
+
+**Plan d'élimination :**
+1. **Extension browser** → Migrer vers `beneficiaires_marque`  
+2. **API** → Supprimer génération `dirigeant_controverse`
+3. **Types** → Supprimer `MarqueDirigeantLegacy`
+
+**Bénéfices attendus :** Code 30% plus simple, un seul format partout
 - ✅ **Maintenance** : Mise à jour centralisée des informations dirigeant
 - ✅ **Rétrocompatibilité** : Extensions existantes continuent de fonctionner
 

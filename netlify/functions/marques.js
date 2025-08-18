@@ -60,11 +60,25 @@ export const handler = async (event, context) => {
       throw new Error('Supabase not configured');
     }
 
-    // Build query - Architecture V2 avec Marque_beneficiaire et controverses structurées
+    // Build query - Architecture V2 avec Marque_beneficiaire et controverses structurées + événements et catégories
     let query = supabase
       .from('Marque')
       .select(`
         *,
+        Evenement!marque_id (
+          id,
+          titre,
+          date,
+          source_url,
+          condamnation_judiciaire,
+          Categorie!categorie_id (
+            id,
+            nom,
+            emoji,
+            couleur,
+            ordre
+          )
+        ),
         Marque_beneficiaire!marque_id (
           id,
           beneficiaire_id,
@@ -323,8 +337,35 @@ export const handler = async (event, context) => {
           };
         }
         
+        // Traitement des événements et catégories
+        const evenements = marque.Evenement || [];
+        const categoriesUniques = new Map();
+        
+        // Extraire les catégories uniques des événements
+        evenements.forEach(event => {
+          if (event.Categorie && !categoriesUniques.has(event.Categorie.id)) {
+            categoriesUniques.set(event.Categorie.id, event.Categorie);
+          }
+        });
+        
+        const categories = Array.from(categoriesUniques.values())
+          .sort((a, b) => a.ordre - b.ordre);
+        
+        // Calculer les statistiques
+        const nbControverses = evenements.length;
+        const nbCondamnations = evenements.filter(e => e.condamnation_judiciaire === true).length;
+        const nbDirigeantsControverses = beneficiaires_marque.length;
+        
         return {
           ...marque,
+          // Événements et catégories
+          evenements,
+          categories,
+          // Statistiques
+          nbControverses,
+          nbCondamnations,
+          nbDirigeantsControverses,
+          // Nouvelles structures
           beneficiaires_marque, // ✅ Nouvelle structure V2
           dirigeant_controverse, // ✅ Rétrocompatibilité
           secteur_marque: marque.SecteurMarque || null
