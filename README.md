@@ -114,6 +114,22 @@ GET /marques?search=nike&limit=50&offset=0
     "secteur_marque_id": 2,
     "message_boycott_tips": "...",
     "dirigeant_controverse": { ... },
+    "beneficiaires_marque": [
+      {
+        "id": 12,
+        "lien_financier": "Actionnaire principal",
+        "source_lien": "direct",
+        "beneficiaire": {
+          "id": 7,
+          "nom": "BlackRock",
+          "controverses": [...],
+          "marques_directes": [{"id": 2, "nom": "Starbucks"}],
+          "marques_indirectes": {
+            "Nestlé": [{"id": 35, "nom": "Herta"}]
+          }
+        }
+      }
+    ],
     "secteur_marque": { ... }
   }
 ]
@@ -157,33 +173,12 @@ Catégories d'événements actives
 ```
 **Cache :** 1 heure | **Données quasi-statiques**
 
-#### `GET /dirigeants`
-Dirigeants avec relations marques
-```bash
-GET /dirigeants              # Tous
-GET /dirigeants?id=123       # Spécifique avec marques liées
-```
-```json
-[
-  {
-    "id": 1,
-    "nom": "Bernard Arnault",
-    "controverses": "...",
-    "sources": ["https://..."],
-    "impact_generique": "...",
-    "marques": [
-      {
-        "id": 5,
-        "nom": "LVMH", 
-        "lien_financier": "PDG",
-        "impact_specifique": "...",
-        "liaison_id": 10
-      }
-    ]
-  }
-]
-```
-**Cache :** 30 minutes | **Architecture V2 normalisée**
+#### `GET /dirigeants` *(Endpoint supprimé)*
+~~Dirigeants avec relations marques~~
+
+**⚠️ Endpoint retiré** : Toute la logique bénéficiaires/dirigeants est maintenant intégrée dans `/marques` pour simplifier l'architecture.
+
+**Utiliser à la place :** `GET /marques` qui contient toutes les données de bénéficiaires controversés avec relations transitives.
 
 #### `GET /secteurs-marque`  
 Secteurs pour Boycott Tips
@@ -208,10 +203,39 @@ GET /secteurs-marque?id=456  # Spécifique
 ## 📊 Structure des Données V2 - Dirigeants Normalisés
 
 ### Évolution Architecturale
-Cette API supporte désormais une architecture de base de données normalisée pour les dirigeants controversés :
+Cette API supporte désormais une architecture de base de données normalisée pour les bénéficiaires controversés :
 
 - **V1 (Legacy)** : Données dirigeant dupliquées pour chaque marque
-- **V2 (Actuel)** : Dirigeants centralisés + table de liaison `marque_dirigeant`
+- **V2 (Actuel)** : Bénéficiaires centralisés + relations transitives + sections marques séparées
+
+### ✨ Nouvelles Propriétés - Sections Marques (2025-01)
+
+Chaque bénéficiaire dispose maintenant de sections séparées pour ses marques liées :
+
+#### `marques_directes`
+Marques directement associées au bénéficiaire (excluant la marque de recherche)
+```json
+"marques_directes": [
+  {"id": 2, "nom": "Starbucks"},
+  {"id": 3, "nom": "Nike"}
+]
+```
+
+#### `marques_indirectes`  
+Marques des bénéficiaires qui profitent au bénéficiaire via relations transitives, groupées par bénéficiaire intermédiaire
+```json
+"marques_indirectes": {
+  "Nestlé": [
+    {"id": 35, "nom": "Herta"},
+    {"id": 39, "nom": "Nescafé"}
+  ]
+}
+```
+
+**Cas d'usage :**
+- Recherche "Starbucks" → BlackRock direct avec marques indirectes de Nestlé
+- Recherche "Herta" → BlackRock transitif avec marques indirectes de Nestlé  
+- Interface utilisateur : badges orange (directes) vs bleus (indirectes)
 
 ### Avantages V2
 - ✅ **Réutilisabilité** : Un dirigeant peut être lié à plusieurs marques
