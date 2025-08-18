@@ -192,10 +192,14 @@ export const handler = async (event, context) => {
 
                 if (marquesIntermediaires?.length > 0) {
                   const nomBeneficiaireIntermediaire = relationEntrante.beneficiaire_source.nom;
-                  marques_indirectes[nomBeneficiaireIntermediaire] = marquesIntermediaires.map(m => ({
-                    id: m.Marque.id,
-                    nom: m.Marque.nom
-                  }));
+                  // Exclure la marque actuelle des marques indirectes
+                  const marquesFiltered = marquesIntermediaires
+                    .map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
+                    .filter(m => m.id !== marque.id);
+                  
+                  if (marquesFiltered.length > 0) {
+                    marques_indirectes[nomBeneficiaireIntermediaire] = marquesFiltered;
+                  }
                 }
               }
             }
@@ -258,11 +262,15 @@ export const handler = async (event, context) => {
             .eq('beneficiaire_id', relation.beneficiaire_source_id); // ID du bénéficiaire source/intermédiaire
 
           if (marquesIntermediaires?.length > 0) {
-            // Grouper par nom du bénéficiaire intermédiaire (source)
-            marques_indirectes[relation.nom_source] = marquesIntermediaires.map(m => ({
-              id: m.Marque.id,
-              nom: m.Marque.nom
-            }));
+            // Exclure la marque actuelle des marques indirectes
+            const marquesFiltered = marquesIntermediaires
+              .map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
+              .filter(m => m.id !== marque.id);
+            
+            if (marquesFiltered.length > 0) {
+              // Grouper par nom du bénéficiaire intermédiaire (source)
+              marques_indirectes[relation.nom_source] = marquesFiltered;
+            }
           }
 
           // Récupérer les controverses structurées pour ce bénéficiaire transitif (cible)
