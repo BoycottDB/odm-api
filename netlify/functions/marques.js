@@ -299,6 +299,7 @@ export const handler = async (event, context) => {
             lien_financier: `${relation.description_relation}`,
             impact_specifique: relation.beneficiaire_cible.impact_generique || undefined,
             source_lien: 'transitif',
+            beneficiaire_parent_nom: relation.nom_source, // ✅ NOUVEAU : nom du bénéficiaire intermédiaire
             beneficiaire: {
               ...relation.beneficiaire_cible,
               controverses: controverses || [],
