@@ -200,6 +200,99 @@ GET /secteurs-marque?id=456  # Spécifique
 ```
 **Cache :** 1 heure | **Métadonnées stables**
 
+#### `GET /api/beneficiaires/chaine?marqueId=<ID>&profondeur=<N>`
+Chaîne financière de bénéficiaires avec algorithme récursif et marques liées
+```bash
+GET /api/beneficiaires/chaine?marqueId=79&profondeur=5  # Maybelline avec 5 niveaux max
+```
+```json
+{
+  "marque_nom": "Maybelline",
+  "marque_id": 79,
+  "chaine": [
+    {
+      "beneficiaire": {
+        "id": 10,
+        "nom": "Groupe l'Oréal",
+        "controverses": [
+          {
+            "id": 23,
+            "beneficiaire_id": 10,
+            "titre": "Tests sur les animaux malgré l'interdiction européenne",
+            "source_url": "https://example.com/source",
+            "ordre": 1,
+            "created_at": "2024-01-15T10:30:00.000Z",
+            "updated_at": "2024-01-15T10:30:00.000Z"
+          }
+        ],
+        "impact_generique": "Vos achats financent ce groupe controversé...",
+        "type_beneficiaire": "groupe"
+      },
+      "niveau": 0,
+      "lien_financier": "Marque détenue à 100% par le groupe",
+      "marques_directes": [
+        {"id": 25, "nom": "Lancôme"},
+        {"id": 26, "nom": "Urban Decay"},
+        {"id": 27, "nom": "Yves Saint Laurent"}
+      ],
+      "marques_indirectes": {
+        "Nestlé SA": [
+          {"id": 45, "nom": "KitKat"},
+          {"id": 46, "nom": "Nescafé"}
+        ]
+      },
+      "relations_suivantes": [{
+        "id": 4,
+        "beneficiaire_source_id": 10,
+        "beneficiaire_cible_id": 5,
+        "type_relation": "actionnaire",
+        "description_relation": "Nestlé détient 23% de L'Oréal",
+        "pourcentage_participation": 23.0
+      }]
+    },
+    {
+      "beneficiaire": {
+        "id": 5,
+        "nom": "Nestlé SA",
+        "controverses": [...],
+        "type_beneficiaire": "groupe"
+      },
+      "niveau": 1,
+      "lien_financier": "Participation financière",
+      "marques_directes": [
+        {"id": 45, "nom": "KitKat"},
+        {"id": 46, "nom": "Nescafé"},
+        {"id": 47, "nom": "Smarties"}
+      ],
+      "marques_indirectes": {
+        "BlackRock": [
+          {"id": 89, "nom": "iShares ETF"},
+          {"id": 90, "nom": "Autre marque BlackRock"}
+        ]
+      },
+      "relations_suivantes": [...]
+    }
+  ],
+  "profondeur_max": 2
+}
+```
+
+**Fonctionnalités :**
+- **Algorithme récursif** avec protection contre les cycles infinis
+- **Liens financiers** détaillés pour chaque niveau de la chaîne
+- **Marques directes** : Toutes les marques liées directement au bénéficiaire (exclut la marque de recherche)
+- **Marques indirectes** : Marques accessibles via les bénéficiaires intermédiaires, organisées par nom d'intermédiaire
+- **Controverses structurées** avec sources et métadonnées complètes
+
+**Configuration :**
+- **Cache :** 10 minutes | **Profondeur max :** 5 niveaux | **Détection cycles :** Oui
+
+**Cas d'usage :**
+- Interface "Chaîne de bénéficiaires" dans l'application web
+- Trace la chaîne complète : `Maybelline → Groupe l'Oréal → Nestlé SA → BlackRock + Vanguard`
+- Affiche les "autres marques liées" pour chaque bénéficiaire de la chaîne
+- Permet de découvrir l'étendue complète de l'impact des achats
+
 ## 📊 Structure des Données V2 - Dirigeants Normalisés
 
 ### Évolution Architecturale
@@ -208,7 +301,7 @@ Cette API supporte désormais une architecture de base de données normalisée p
 - **V1 (Legacy)** : Données dirigeant dupliquées pour chaque marque
 - **V2 (Actuel)** : Bénéficiaires centralisés + relations transitives + sections marques séparées
 
-### ✨ Nouvelles Propriétés - Sections Marques (2025-01)
+### ✨ Nouvelles Propriétés - Sections Marques
 
 Chaque bénéficiaire dispose maintenant de sections séparées pour ses marques liées :
 
@@ -235,7 +328,7 @@ Marques des bénéficiaires qui profitent au bénéficiaire via relations transi
 **Cas d'usage :**
 - Recherche "Starbucks" → BlackRock direct avec marques indirectes de Nestlé
 - Recherche "Herta" → BlackRock transitif avec marques indirectes de Nestlé  
-- Interface utilisateur : badges orange (directes) vs bleus (indirectes)
+- Interface utilisateur : badges berry (directes) vs bleus (indirectes)
 
 ### Avantages V2
 - ✅ **Réutilisabilité** : Un dirigeant peut être lié à plusieurs marques

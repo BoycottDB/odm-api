@@ -26,24 +26,36 @@
         <div class="endpoints">
             <h3>🔗 Endpoints disponibles</h3>
             
+            <h4 style="margin: 1.5rem 0 1rem; color: #fce7f3; font-size: 1.1rem;">Application web & Extensions navigateur</h4>
+            
             <div class="endpoint">
                 <a href="/health" target="_blank">/health</a>
                 <div class="description">Vérification de l'état de l'API</div>
             </div>
             
             <div class="endpoint">
-                <a href="/api/brands/version" target="_blank">/api/brands/version</a>
-                <div class="description">Version et métadonnées des données</div>
+                <a href="/api/marques" target="_blank">/api/marques</a>
+                <div class="description">Liste des marques avec statistiques</div>
             </div>
             
             <div class="endpoint">
-                <a href="/api/brands/full" target="_blank">/api/brands/full</a>
-                <div class="description">Toutes les marques avec événements</div>
+                <a href="/api/evenements" target="_blank">/api/evenements</a>
+                <div class="description">Événements et controverses</div>
             </div>
             
             <div class="endpoint">
-                <a href="/api/brands/updates?since=2024-01-01T00:00:00.000Z" target="_blank">/api/brands-updates?since=DATE</a>
-                <div class="description">Mises à jour depuis une date donnée</div>
+                <a href="/api/categories" target="_blank">/api/categories</a>
+                <div class="description">Catégories d'événements</div>
+            </div>
+            
+            <div class="endpoint">
+                <a href="/api/secteurs-marque" target="_blank">/api/secteurs-marque</a>
+                <div class="description">Secteurs de marques pour Boycott Tips</div>
+            </div>
+            
+            <div class="endpoint">
+                <a href="/api/beneficiaires/chaine?marqueId=79&profondeur=3" target="_blank">/api/beneficiaires/chaine?marqueId=ID&profondeur=N</a>
+                <div class="description">Chaîne financière récursive avec marques liées</div>
             </div>
         </div>
         
