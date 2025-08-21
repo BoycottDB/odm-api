@@ -17,22 +17,34 @@
   from = "/health"
   to = "/.netlify/functions/health"
   status = 200
-  
+
+# Endpoints pour l'application web (architecture simplifiée)
 [[redirects]]
-  from = "/api/brands/version"
-  to = "/.netlify/functions/brands-version"
+  from = "/api/marques"
+  to = "/.netlify/functions/marques"
   status = 200
 
 [[redirects]]
-  from = "/api/brands/updates"
-  to = "/.netlify/functions/brands-updates"
+  from = "/api/evenements"
+  to = "/.netlify/functions/evenements"
   status = 200
 
 [[redirects]]
-  from = "/api/brands/full"
-  to = "/.netlify/functions/brands-full"
+  from = "/api/categories"
+  to = "/.netlify/functions/categories"
   status = 200
 
+[[redirects]]
+  from = "/api/secteurs-marque"
+  to = "/.netlify/functions/secteurs-marque"
+  status = 200
+
+[[redirects]]
+  from = "/api/beneficiaires/chaine"
+  to = "/.netlify/functions/beneficiaires-chaine"
+  status = 200
+
+# Fallbacks et monitoring
 [[redirects]]
   from = "/api/stats"
   to = "/.netlify/functions/health"

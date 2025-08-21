@@ -9,7 +9,12 @@ extension-api/
 │       ├── health.js        # Health check et monitoring
 │       ├── brands-version.js # Métadonnées de version
 │       ├── brands-updates.js # Synchronisation incrémentale
-│       └── brands-full.js   # Récupération complète (fallback)
+│       ├── brands-full.js   # Récupération complète (fallback)
+│       ├── marques.js       # Marques pour l'application web
+│       ├── evenements.js    # Événements et controverses
+│       ├── categories.js    # Catégories d'événements
+│       ├── secteurs-marque.js # Secteurs pour Boycott Tips
+│       └── beneficiaires-chaine.js # Chaîne financière de bénéficiaires
 ├── public/
 │   └── index.html          # Interface de documentation et tests
 ├── netlify.toml            # Configuration déploiement et routage
@@ -189,6 +194,119 @@ export const handler = async (event, context) => {
 - **Cache longue durée** (30 minutes)
 - **Gestion d'erreurs** gracieuse par section
 
+### beneficiaires-chaine.js - Chaîne Financière de Bénéficiaires
+```javascript
+// Architecture: Algorithme Récursif + Enrichissement Marques + Cache Multi-niveaux
+export const handler = async (event) => {
+  const { marqueId, profondeur } = event.queryStringParameters || {}
+  const profondeurMax = parseInt(profondeur || '5')
+  const cacheKey = `chaine-${marqueId}-${profondeurMax}`
+  
+  // Cache multi-niveaux : in-memory + CDN Edge
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey)
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      return successResponse(cached.data)
+    }
+  }
+  
+  // 1. Construire la chaîne récursive avec liens financiers
+  const chaineFusionnee = []
+  for (const liaison of liaisonsBeneficiaires) {
+    const chaine = await construireChaineRecursive(
+      liaison.beneficiaire_id,
+      0, // Niveau 0 pour bénéficiaire direct
+      new Set(),
+      profondeurMax,
+      liaison.lien_financier || 'Lien financier direct'
+    )
+    chaineFusionnee.push(...chaine)
+  }
+  
+  // 2. Éliminer doublons et trier
+  const chaineUnique = chaineFusionnee.filter((node, index, array) => 
+    array.findIndex(n => n.beneficiaire.id === node.beneficiaire.id) === index
+  ).sort((a, b) => {
+    if (a.niveau !== b.niveau) return a.niveau - b.niveau
+    return a.beneficiaire.nom.localeCompare(b.beneficiaire.nom)
+  })
+  
+  // 3. Enrichir avec marques liées pour TOUS les bénéficiaires de la chaîne
+  const chaineEnrichie = await enrichirAvecMarquesLiees(chaineUnique, marque.id)
+  
+  const resultat = {
+    marque_nom: marque.nom,
+    marque_id: marque.id,
+    chaine: chaineEnrichie,
+    profondeur_max: chaineEnrichie.length > 0 ? Math.max(...chaineEnrichie.map(node => node.niveau)) : 0
+  }
+  
+  cache.set(cacheKey, { data: resultat, timestamp: Date.now() })
+  return successResponse(resultat)
+}
+
+// Fonction d'enrichissement - traite tous les bénéficiaires de la chaîne
+async function enrichirAvecMarquesLiees(chaineNodes, marqueId) {
+  const beneficiairesEnrichis = new Map()
+  
+  for (const node of chaineNodes) {
+    // Marques directes : toutes les marques liées au bénéficiaire (sauf la marque de recherche)
+    const { data: toutesMarquesDuBeneficiaire } = await supabase
+      .from('Marque_beneficiaire')
+      .select('Marque!marque_id (id, nom)')
+      .eq('beneficiaire_id', node.beneficiaire.id)
+    
+    const marques_directes = toutesMarquesDuBeneficiaire
+      ?.map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
+      .filter(m => m.id !== marqueId) || []
+    
+    // Marques indirectes : via relations entrantes du bénéficiaire
+    const marques_indirectes = {}
+    const { data: relationsEntrantes } = await supabase
+      .from('beneficiaire_relation')
+      .select(`
+        beneficiaire_source_id,
+        beneficiaire_source:Beneficiaires!beneficiaire_relation_beneficiaire_source_id_fkey (nom)
+      `)
+      .eq('beneficiaire_cible_id', node.beneficiaire.id)
+    
+    for (const relation of relationsEntrantes || []) {
+      const { data: marquesIntermediaires } = await supabase
+        .from('Marque_beneficiaire')
+        .select('Marque!marque_id (id, nom)')
+        .eq('beneficiaire_id', relation.beneficiaire_source_id)
+      
+      const marquesFiltered = marquesIntermediaires
+        ?.map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
+        .filter(m => m.id !== marqueId) || []
+      
+      if (marquesFiltered.length > 0) {
+        marques_indirectes[relation.beneficiaire_source.nom] = marquesFiltered
+      }
+    }
+    
+    beneficiairesEnrichis.set(node.beneficiaire.id, { marques_directes, marques_indirectes })
+  }
+  
+  // Appliquer l'enrichissement à chaque node
+  return chaineNodes.map(node => ({
+    ...node,
+    marques_directes: beneficiairesEnrichis.get(node.beneficiaire.id)?.marques_directes || [],
+    marques_indirectes: beneficiairesEnrichis.get(node.beneficiaire.id)?.marques_indirectes || {}
+  }))
+}
+```
+**Patterns utilisés :**
+- **Algorithme récursif** avec protection contre les cycles infinis (`Set` visitedIds)
+- **Liens financiers transitifs** : chaque niveau garde trace de son lien financier parent
+- **Enrichissement post-construction** : marques liées calculées après la chaîne complète
+- **Marques directes** : toutes les marques liées directement au bénéficiaire
+- **Marques indirectes** : organisées par bénéficiaire intermédiaire via `beneficiaire_relation`
+- **Cache intelligent** par paramètres (marqueId + profondeur) avec TTL 10min
+- **Déduplication** des bénéficiaires présents à plusieurs niveaux
+- **Tri hiérarchique** : niveau puis nom alphabétique
+- **Performance optimisée** : évite queries redondantes avec Map interne
+
 ## 🎯 Patterns Architecturaux Principaux
 
 ### 1. Resilient Serverless Pattern
@@ -246,7 +364,7 @@ const transformBrandsWithLeadersForExtension = (brands, events) => {
       dirigeants = dirigeants ? [dirigeants] : []
     }
     
-    // Transformation dirigeants avec toutes les marques liées (enrichissement 2025)
+    // Transformation dirigeants avec toutes les marques liées
     const transformedDirigeants = await Promise.all(dirigeants.map(async (liaison) => {
       // Récupérer toutes les marques pour ce dirigeant
       const { data: toutesMarquesDuDirigeant } = await supabase
@@ -365,7 +483,94 @@ const cache = new Map()
 const TTL = {
   VERSION: 5 * 60 * 1000,    // 5 minutes - frequently accessed
   UPDATES: 10 * 60 * 1000,   // 10 minutes - moderate frequency  
-  FULL: 30 * 60 * 1000       // 30 minutes - heavy payload
+  FULL: 30 * 60 * 1000,      // 30 minutes - heavy payload
+  BENEFICIAIRES_CHAINE: 10 * 60 * 1000,  // 10 minutes - chaîne bénéficiaires avec marques liées
+  MARQUES: 20 * 60 * 1000,   // 20 minutes - liste marques web app avec relations
+  EVENEMENTS: 15 * 60 * 1000, // 15 minutes - événements avec pagination
+  CATEGORIES: 60 * 60 * 1000, // 1 heure - catégories quasi-statiques
+  SECTEURS: 60 * 60 * 1000   // 1 heure - secteurs marques stables
+}
+```
+
+## 🌐 Application Web Support - Architecture Simplifiée
+
+### Nouveaux Endpoints pour l'App Web
+En complément des endpoints extension, l'API supporte désormais l'application web selon l'architecture simplifiée :
+
+#### marques.js - Liste des Marques avec Statistiques
+```javascript
+// Endpoint optimisé pour l'app web avec statistiques intégrées
+export const handler = async (event) => {
+  // Support recherche via query parameter
+  const { q: searchQuery } = event.queryStringParameters || {}
+  
+  let query = supabase.from('Marque').select(`
+    id, nom, created_at, updated_at,
+    secteur_marque_id, message_boycott_tips,
+    evenements:Evenement!marque_id (id, categorie_id, condamnation_judiciaire),
+    beneficiaires:Marque_beneficiaire!marque_id (id, beneficiaire_id)
+  `)
+  
+  if (searchQuery) {
+    query = query.ilike('nom', `%${searchQuery}%`)
+  }
+  
+  // Transformation avec statistiques calculées
+  const transformedData = brands.map(brand => ({
+    id: brand.id,
+    nom: brand.nom,
+    nbControverses: brand.evenements?.length || 0,
+    nbCondamnations: brand.evenements?.filter(e => e.condamnation_judiciaire).length || 0,
+    nbBeneficiairesControverses: brand.beneficiaires?.length || 0,
+    secteur_marque_id: brand.secteur_marque_id,
+    message_boycott_tips: brand.message_boycott_tips
+  }))
+}
+```
+
+#### evenements.js - Événements avec Pagination
+```javascript
+// Support pagination pour l'app web
+export const handler = async (event) => {
+  const { page = '1', limit = '20', marqueId } = event.queryStringParameters || {}
+  
+  let query = supabase.from('Evenement').select(`
+    *, 
+    marque:Marque!marque_id (id, nom),
+    categorie:Categorie!categorie_id (id, nom, emoji, couleur)
+  `)
+  
+  if (marqueId) query = query.eq('marque_id', marqueId)
+  
+  // Pagination avec range
+  const from = (parseInt(page) - 1) * parseInt(limit)
+  const to = from + parseInt(limit) - 1
+  
+  const { data, error, count } = await query
+    .range(from, to)
+    .order('created_at', { ascending: false })
+}
+```
+
+#### categories.js - Catégories d'Événements
+```javascript
+// Endpoint simple pour les catégories avec cache long
+export const handler = async (event) => {
+  const cacheKey = 'categories-all'
+  
+  // Cache 30 minutes car données très stables
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey)
+    if (Date.now() - cached.timestamp < 30 * 60 * 1000) {
+      return successResponse(cached.data)
+    }
+  }
+  
+  const { data: categories } = await supabase
+    .from('Categorie')
+    .select('*')
+    .eq('actif', true)
+    .order('ordre', { ascending: true })
 }
 ```
 
