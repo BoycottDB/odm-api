@@ -19,7 +19,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour (sectors rarely change)
 
-export const handler = async (event, context) => {
+export const handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -51,7 +51,10 @@ export const handler = async (event, context) => {
       console.log('Cache hit for sectors');
       return {
         statusCode: 200,
-        headers,
+        headers: {
+          ...headers,
+          'X-Data-Source': 'odm-api-secteurs-cache'
+        },
         body: JSON.stringify(cached.data)
       };
     }
@@ -77,7 +80,10 @@ export const handler = async (event, context) => {
 
       return {
         statusCode: 200,
-        headers,
+        headers: {
+          ...headers,
+          'X-Data-Source': 'odm-api-secteurs-fresh'
+        },
         body: JSON.stringify(secteur)
       };
     } else {
@@ -97,7 +103,10 @@ export const handler = async (event, context) => {
       console.log(`Sectors loaded: ${secteurs?.length || 0} sectors`);
       return {
         statusCode: 200,
-        headers,
+        headers: {
+          ...headers,
+          'X-Data-Source': 'odm-api-secteurs-fresh'
+        },
         body: JSON.stringify(secteurs || [])
       };
     }

@@ -22,7 +22,7 @@ const corsHeaders = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1800', // 10min cache + 30min stale
-  'X-Data-Source': 'extension-api-chaine'
+  'X-Data-Source': 'odm-api-chaine'
 };
 
 // Fonction utilitaire pour les réponses

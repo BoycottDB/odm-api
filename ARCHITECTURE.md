@@ -1,9 +1,9 @@
-# Architecture de l'Extension API
+# Architecture de l'ODM API
 
 ## 📁 Structure du Projet
 
 ```
-extension-api/
+odm-api/
 ├── netlify/                 # Netlify Functions (Serverless)
 │   └── functions/          
 │       ├── health.js        # Health check et monitoring

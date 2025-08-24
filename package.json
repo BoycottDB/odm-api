@@ -1,7 +1,7 @@
 {
-  "name": "extension-api",
+  "name": "odm-api",
   "version": "1.0.0",
-  "description": "API pour les mises à jour automatiques de l'extension Répertoire des Marques à Boycotter",
+  "description": "API pour ODM (Observatoire des Marques) - Répertoire Collaboratif des Marques à Boycotter",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -11,8 +11,8 @@
     "build": "echo 'No build needed for Node.js'",
     "railway:start": "node server.js"
   },
-  "keywords": ["api", "extension", "boycott", "brands", "updates"],
-  "author": "Répertoire des Marques à Boycotter",
+  "keywords": ["api", "odm", "boycott", "brands", "observatory"],
+  "author": "ODM - Observatoire des Marques",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",

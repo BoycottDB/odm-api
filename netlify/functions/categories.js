@@ -19,7 +19,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour (categories rarely change)
 
-export const handler = async (event, context) => {
+export const handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -49,7 +49,10 @@ export const handler = async (event, context) => {
       console.log('Cache hit for categories');
       return {
         statusCode: 200,
-        headers,
+        headers: {
+          ...headers,
+          'X-Data-Source': 'odm-api-categories-cache'
+        },
         body: JSON.stringify(cached.data)
       };
     }
@@ -76,7 +79,10 @@ export const handler = async (event, context) => {
     console.log(`Categories loaded: ${categories?.length || 0} categories`);
     return {
       statusCode: 200,
-      headers,
+      headers: {
+        ...headers,
+        'X-Data-Source': 'odm-api-categories-fresh'
+      },
       body: JSON.stringify(categories || [])
     };
 

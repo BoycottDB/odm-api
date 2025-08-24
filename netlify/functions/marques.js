@@ -19,7 +19,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 
-export const handler = async (event, context) => {
+export const handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -51,7 +51,10 @@ export const handler = async (event, context) => {
       console.log('Cache hit for brands');
       return {
         statusCode: 200,
-        headers,
+        headers: {
+          ...headers,
+          'X-Data-Source': 'odm-api-marques-cache'
+        },
         body: JSON.stringify(cached.data)
       };
     }
@@ -383,7 +386,10 @@ export const handler = async (event, context) => {
     console.log(`Brands loaded: ${transformedBrands.length} brands (search: ${search || 'none'})`);
     return {
       statusCode: 200,
-      headers,
+      headers: {
+        ...headers,
+        'X-Data-Source': 'odm-api-marques-fresh'
+      },
       body: JSON.stringify(transformedBrands)
     };
 

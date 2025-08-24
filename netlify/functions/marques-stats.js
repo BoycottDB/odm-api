@@ -19,7 +19,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 
-export const handler = async (event, context) => {
+export const handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -51,7 +51,7 @@ export const handler = async (event, context) => {
         statusCode: 200,
         headers: {
           ...headers,
-          'X-Data-Source': 'extension-api-cache'
+          'X-Data-Source': 'odm-api-cache'
         },
         body: JSON.stringify(cached.data)
       };
@@ -150,7 +150,7 @@ export const handler = async (event, context) => {
       statusCode: 200,
       headers: {
         ...headers,
-        'X-Data-Source': 'extension-api-fresh'
+        'X-Data-Source': 'odm-api-fresh'
       },
       body: JSON.stringify(marquesWithStats)
     };

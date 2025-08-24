@@ -1,8 +1,8 @@
-# Extension API - Répertoire des Marques à Boycotter
+# ODM API - Observatoire des Marques
 
 API Serverless (Netlify Functions) optimisée pour :
 1. **Extensions Chrome/Firefox** - Synchronisation des données avec cache intelligent
-2. **Application Web** - Architecture hybride pour réduire la charge Supabase *(Nouveau)*
+2. **Application Web ODM** - Architecture hybride pour réduire la charge Supabase *(Nouveau)*
 
 ## 🎯 Objectifs
 
@@ -43,7 +43,7 @@ Supabase (PostgreSQL) → Netlify Functions → Extensions Browser
 ```bash
 # Clone et installation
 git clone [repo-url]
-cd extension-api
+cd odm-api
 npm install
 ```
 
