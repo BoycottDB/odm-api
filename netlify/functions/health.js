@@ -1,7 +1,7 @@
 /**
  * Netlify Function - Health check
  */
-export const handler = async (event, context) => {
+export const handler = async (event) => {
   // CORS headers
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -30,14 +30,17 @@ export const handler = async (event, context) => {
   const response = {
     status: 'OK',
     timestamp: new Date().toISOString(),
-    service: 'Extension API - Netlify',
+    service: 'ODM API - Netlify',
     version: '1.0.0',
     environment: process.env.NODE_ENV || 'production'
   };
 
   return {
     statusCode: 200,
-    headers,
+    headers: {
+      ...headers,
+      'X-Data-Source': 'odm-api-health'
+    },
     body: JSON.stringify(response)
   };
 };
