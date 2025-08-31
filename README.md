@@ -247,7 +247,6 @@ GET /api/beneficiaires/chaine?marqueId=79&profondeur=5  # Maybelline avec 5 nive
         "beneficiaire_cible_id": 5,
         "type_relation": "actionnaire",
         "description_relation": "Nestlé détient 23% de L'Oréal",
-        "pourcentage_participation": 23.0
       }]
     },
     {
