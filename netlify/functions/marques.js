@@ -224,8 +224,9 @@ export const handler = async (event) => {
             // Récupérer les controverses structurées pour ce bénéficiaire
             const { data: controverses } = await supabase
               .from('controverse_beneficiaire')
-              .select('*')
+              .select('*,Categorie!controverse_beneficiaire_categorie_id_fkey(*)')
               .eq('beneficiaire_id', liaison.Beneficiaires.id)
+              .order('date', { ascending: false, nullsFirst: false })
               .order('ordre');
             
             beneficiaires_marque.push({
@@ -293,8 +294,9 @@ export const handler = async (event) => {
           // Récupérer les controverses structurées pour ce bénéficiaire transitif (cible)
           const { data: controverses } = await supabase
             .from('controverse_beneficiaire')
-            .select('*')
+            .select('*,Categorie!controverse_beneficiaire_categorie_id_fkey(*)')
             .eq('beneficiaire_id', relation.beneficiaire_cible.id)
+            .order('date', { ascending: false, nullsFirst: false })
             .order('ordre');
           
           beneficiaires_marque.push({

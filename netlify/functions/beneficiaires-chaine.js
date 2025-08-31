@@ -186,7 +186,7 @@ async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedId
         type_beneficiaire,
         created_at,
         updated_at,
-        controverses:controverse_beneficiaire(*)
+        controverses:controverse_beneficiaire(*,Categorie!controverse_beneficiaire_categorie_id_fkey(*))
       `)
       .eq('id', beneficiaireId)
       .single();
@@ -215,7 +215,6 @@ async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedId
       beneficiaire_cible_id: rel.beneficiaire_cible_id,
       type_relation: 'actionnaire', // Valeur par défaut
       description_relation: rel.description_relation,
-      pourcentage_participation: undefined,
       created_at: rel.created_at,
       updated_at: rel.updated_at
     }));
@@ -322,7 +321,7 @@ export const handler = async (event) => {
           nom,
           impact_generique,
           type_beneficiaire,
-          controverses:controverse_beneficiaire(*)
+          controverses:controverse_beneficiaire(*,Categorie!controverse_beneficiaire_categorie_id_fkey(*))
         )
       `)
       .eq('marque_id', parseInt(marqueId));
