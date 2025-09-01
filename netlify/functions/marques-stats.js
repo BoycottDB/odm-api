@@ -19,6 +19,87 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 
+// Fonction pour compter les bénéficiaires controversés sur plusieurs niveaux
+async function getNbBeneficiairesControverses(supabase, marqueId) {
+  try {
+    // 1. Récupérer les bénéficiaires directs de cette marque
+    const { data: liaisonsBeneficiaires } = await supabase
+      .from('Marque_beneficiaire')
+      .select('beneficiaire_id')
+      .eq('marque_id', marqueId);
+
+    if (!liaisonsBeneficiaires || liaisonsBeneficiaires.length === 0) {
+      return 0;
+    }
+
+    // 2. Pour chaque bénéficiaire direct, construire sa chaîne et compter les controversés
+    const beneficiairesControverses = new Set();
+    
+    for (const liaison of liaisonsBeneficiaires) {
+      if (!liaison.beneficiaire_id) continue;
+      
+      const controversesDeChaine = await getBeneficiairesControversesRecursif(
+        supabase,
+        liaison.beneficiaire_id,
+        new Set(),
+        5 // profondeur max
+      );
+      
+      controversesDeChaine.forEach(id => beneficiairesControverses.add(id));
+    }
+    
+    return beneficiairesControverses.size;
+  } catch (error) {
+    console.error(`Erreur lors du comptage des bénéficiaires controversés pour la marque ${marqueId}:`, error);
+    return 0;
+  }
+}
+
+// Fonction récursive pour parcourir la chaîne et trouver les bénéficiaires controversés
+async function getBeneficiairesControversesRecursif(supabase, beneficiaireId, visited, profondeurRestante) {
+  const result = new Set();
+  
+  // Éviter les cycles et limiter la profondeur
+  if (profondeurRestante <= 0 || visited.has(beneficiaireId)) {
+    return result;
+  }
+  
+  visited.add(beneficiaireId);
+  
+  // Vérifier si ce bénéficiaire a des controverses
+  const { data: controverses } = await supabase
+    .from('controverse_beneficiaire')
+    .select('id')
+    .eq('beneficiaire_id', beneficiaireId)
+    .limit(1);
+    
+  if (controverses && controverses.length > 0) {
+    result.add(beneficiaireId);
+  }
+  
+  // Récupérer les relations suivantes
+  const { data: relations } = await supabase
+    .from('beneficiaire_relation')
+    .select('beneficiaire_cible_id')
+    .eq('beneficiaire_source_id', beneficiaireId);
+    
+  if (relations && relations.length > 0) {
+    for (const relation of relations) {
+      if (relation.beneficiaire_cible_id && !visited.has(relation.beneficiaire_cible_id)) {
+        const sousResult = await getBeneficiairesControversesRecursif(
+          supabase,
+          relation.beneficiaire_cible_id,
+          new Set(visited), // Nouvelle copie pour chaque branche
+          profondeurRestante - 1
+        );
+        sousResult.forEach(id => result.add(id));
+      }
+    }
+  }
+  
+  return result;
+}
+
 export const handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -93,7 +174,7 @@ export const handler = async (event) => {
     if (marquesError) throw marquesError;
 
     // Calculer les statistiques pour chaque marque
-    const marquesWithStats = (marques || []).map((marque) => {
+    const marquesWithStats = await Promise.all((marques || []).map(async (marque) => {
       const evenements = marque.Evenement || [];
       
       // Nombre total de controverses
@@ -118,8 +199,8 @@ export const handler = async (event) => {
       // Nombre de condamnations judiciaires
       const nbCondamnations = evenements.filter((e) => e.condamnation_judiciaire === true).length;
       
-      // Nombre de bénéficiaires controversés
-      const nbDirigeantsControverses = Array.isArray(marque.Marque_beneficiaire) ? marque.Marque_beneficiaire.length : 0;
+      // Nombre de bénéficiaires controversés (multi-niveaux)
+      const nbBeneficiairesControverses = await getNbBeneficiairesControverses(supabase, marque.id);
       
       return {
         id: marque.id,
@@ -127,9 +208,9 @@ export const handler = async (event) => {
         nbControverses,
         categories,
         nbCondamnations,
-        nbDirigeantsControverses
+        nbBeneficiairesControverses
       };
-    });
+    }));
 
     // Trier par nombre de controverses décroissant, puis par nom
     marquesWithStats.sort((a, b) => {
