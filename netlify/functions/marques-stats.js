@@ -19,8 +19,8 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 
-// Fonction pour compter les bénéficiaires controversés sur plusieurs niveaux
-async function getNbBeneficiairesControverses(supabase, marqueId) {
+// Fonction pour récupérer les bénéficiaires controversés sur plusieurs niveaux
+async function getBeneficiairesControverses(supabase, marqueId) {
   try {
     // 1. Récupérer les bénéficiaires directs de cette marque
     const { data: liaisonsBeneficiaires } = await supabase
@@ -29,11 +29,11 @@ async function getNbBeneficiairesControverses(supabase, marqueId) {
       .eq('marque_id', marqueId);
 
     if (!liaisonsBeneficiaires || liaisonsBeneficiaires.length === 0) {
-      return 0;
+      return { count: 0, beneficiaires: [] };
     }
 
-    // 2. Pour chaque bénéficiaire direct, construire sa chaîne et compter les controversés
-    const beneficiairesControverses = new Set();
+    // 2. Pour chaque bénéficiaire direct, construire sa chaîne et collecter les controversés
+    const beneficiairesControversesMap = new Map();
     
     for (const liaison of liaisonsBeneficiaires) {
       if (!liaison.beneficiaire_id) continue;
@@ -45,13 +45,16 @@ async function getNbBeneficiairesControverses(supabase, marqueId) {
         5 // profondeur max
       );
       
-      controversesDeChaine.forEach(id => beneficiairesControverses.add(id));
+      controversesDeChaine.forEach(beneficiaire => {
+        beneficiairesControversesMap.set(beneficiaire.id, beneficiaire);
+      });
     }
     
-    return beneficiairesControverses.size;
+    const beneficiaires = Array.from(beneficiairesControversesMap.values());
+    return { count: beneficiaires.length, beneficiaires };
   } catch (error) {
-    console.error(`Erreur lors du comptage des bénéficiaires controversés pour la marque ${marqueId}:`, error);
-    return 0;
+    console.error(`Erreur lors de la récupération des bénéficiaires controversés pour la marque ${marqueId}:`, error);
+    return { count: 0, beneficiaires: [] };
   }
 }
 
@@ -66,7 +69,7 @@ async function getBeneficiairesControversesRecursif(supabase, beneficiaireId, vi
   
   visited.add(beneficiaireId);
   
-  // Vérifier si ce bénéficiaire a des controverses
+  // Vérifier si ce bénéficiaire a des controverses et récupérer son nom
   const { data: controverses } = await supabase
     .from('controverse_beneficiaire')
     .select('id')
@@ -74,7 +77,16 @@ async function getBeneficiairesControversesRecursif(supabase, beneficiaireId, vi
     .limit(1);
     
   if (controverses && controverses.length > 0) {
-    result.add(beneficiaireId);
+    // Récupérer le nom du bénéficiaire
+    const { data: beneficiaire } = await supabase
+      .from('Beneficiaires')
+      .select('id, nom')
+      .eq('id', beneficiaireId)
+      .single();
+      
+    if (beneficiaire) {
+      result.add({ id: beneficiaire.id, nom: beneficiaire.nom });
+    }
   }
   
   // Récupérer les relations suivantes
@@ -92,7 +104,7 @@ async function getBeneficiairesControversesRecursif(supabase, beneficiaireId, vi
           new Set(visited), // Nouvelle copie pour chaque branche
           profondeurRestante - 1
         );
-        sousResult.forEach(id => result.add(id));
+        sousResult.forEach(beneficiaire => result.add(beneficiaire));
       }
     }
   }
@@ -199,8 +211,8 @@ export const handler = async (event) => {
       // Nombre de condamnations judiciaires
       const nbCondamnations = evenements.filter((e) => e.condamnation_judiciaire === true).length;
       
-      // Nombre de bénéficiaires controversés (multi-niveaux)
-      const nbBeneficiairesControverses = await getNbBeneficiairesControverses(supabase, marque.id);
+      // Bénéficiaires controversés (multi-niveaux)
+      const beneficiairesData = await getBeneficiairesControverses(supabase, marque.id);
       
       return {
         id: marque.id,
@@ -208,7 +220,8 @@ export const handler = async (event) => {
         nbControverses,
         categories,
         nbCondamnations,
-        nbBeneficiairesControverses
+        nbBeneficiairesControverses: beneficiairesData.count,
+        beneficiairesControverses: beneficiairesData.beneficiaires
       };
     }));
 
