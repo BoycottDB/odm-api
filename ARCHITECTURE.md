@@ -14,7 +14,9 @@ odm-api/
 │       ├── evenements.js    # Événements et controverses
 │       ├── categories.js    # Catégories d'événements
 │       ├── secteurs-marque.js # Secteurs pour Boycott Tips
-│       └── beneficiaires-chaine.js # Chaîne financière de bénéficiaires
+│       ├── beneficiaires-chaine.js # Chaîne financière de bénéficiaires
+│       └── utils/           # Modules utilitaires partagés
+│           └── marquesTransitives.js # Algorithme récursif marques transitives
 ├── public/
 │   └── index.html          # Interface de documentation et tests
 ├── netlify.toml            # Configuration déploiement et routage
@@ -277,15 +279,19 @@ async function enrichirAvecMarquesLiees(chaineNodes, marqueId) {
         .eq('beneficiaire_id', relation.beneficiaire_source_id)
       
       const marquesFiltered = marquesIntermediaires
-        ?.map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
-        .filter(m => m.id !== marqueId) || []
-      
-      if (marquesFiltered.length > 0) {
-        marques_indirectes[relation.beneficiaire_source.nom] = marquesFiltered
-      }
-    }
+    // ✅ NOUVELLE LOGIQUE : Utiliser la fonction récursive partagée
+    const marquesTransitives = await recupererToutesMarquesTransitives(
+      supabase,
+      node.beneficiaire.id,
+      marqueId,
+      new Set(),
+      5
+    );
     
-    beneficiairesEnrichis.set(node.beneficiaire.id, { marques_directes, marques_indirectes })
+    beneficiairesEnrichis.set(node.beneficiaire.id, {
+      marques_directes,
+      marques_indirectes: marquesTransitives.marquesIndirectes
+    })
   }
   
   // Appliquer l'enrichissement à chaque node
@@ -297,12 +303,13 @@ async function enrichirAvecMarquesLiees(chaineNodes, marqueId) {
 }
 ```
 **Patterns utilisés :**
-- **Algorithme récursif** avec protection contre les cycles infinis (`Set` visitedIds)
+- **Module utilitaire partagé** : `utils/marquesTransitives.js` évite la duplication de code
+- **Algorithme récursif complet** avec protection contre les cycles infinis (`Set` visitedIds)
 - **Liens financiers transitifs** : chaque niveau garde trace de son lien financier parent
 - **Enrichissement post-construction** : marques liées calculées après la chaîne complète
 - **Marques directes** : toutes les marques liées directement au bénéficiaire
-- **Marques indirectes** : organisées par bénéficiaire intermédiaire via `beneficiaire_relation`
-- **Cache intelligent** par paramètres (marqueId + profondeur) avec TTL 10min
+- **Marques indirectes** : **récursion complète** via tous les bénéficiaires intermédiaires (ex: BlackRock voit L'Oréal via Nestlé)
+- **Cache intelligent** multi-niveaux : 10min (chaînes) + 30min (marques transitives)
 - **Déduplication** des bénéficiaires présents à plusieurs niveaux
 - **Tri hiérarchique** : niveau puis nom alphabétique
 - **Performance optimisée** : évite queries redondantes avec Map interne
