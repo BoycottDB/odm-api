@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -73,58 +74,16 @@ async function enrichirAvecMarquesLiees(chaineNodes, marqueId) {
       // Calculer les marques directes (exclure la marque actuelle de recherche)
       const marques_directes = toutesMarques.filter(m => m.id !== marqueId);
 
-      // Calculer les marques indirectes via les relations entrantes
-      const marques_indirectes = {};
+      // ✅ NOUVELLE LOGIQUE : Utiliser la fonction récursive partagée
+      const marquesTransitives = await recupererToutesMarquesTransitives(
+        supabase,
+        beneficiaireId,
+        marqueId,
+        new Set(),
+        5
+      );
       
-      const { data: relationsEntrantes, error: relError } = await supabase
-        .from('beneficiaire_relation')
-        .select(`
-          id,
-          beneficiaire_source_id,
-          description_relation,
-          beneficiaire_source:Beneficiaires!beneficiaire_relation_beneficiaire_source_id_fkey (
-            id,
-            nom
-          )
-        `)
-        .eq('beneficiaire_cible_id', beneficiaireId);
-
-      if (relError) {
-        console.error(`Erreur récupération relations pour bénéficiaire ${beneficiaireId}:`, relError);
-      } else {
-        console.log(`Bénéficiaire ${node.beneficiaire.nom} - Relations entrantes:`, relationsEntrantes?.length || 0);
-      }
-
-      if (relationsEntrantes?.length > 0) {
-        for (const relationEntrante of relationsEntrantes) {
-          // Pour chaque bénéficiaire source, récupérer toutes ses marques
-          const { data: marquesIntermediaires, error: intError } = await supabase
-            .from('Marque_beneficiaire')
-            .select(`
-              Marque!marque_id (id, nom)
-            `)
-            .eq('beneficiaire_id', relationEntrante.beneficiaire_source_id);
-
-          if (intError) {
-            console.error(`Erreur récupération marques intermédiaires:`, intError);
-            continue;
-          }
-
-          if (marquesIntermediaires?.length > 0) {
-            const nomBeneficiaireIntermediaire = relationEntrante.beneficiaire_source.nom;
-            // Exclure la marque actuelle de recherche des marques indirectes
-            const marquesFiltered = marquesIntermediaires
-              .map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
-              .filter(m => m.id !== marqueId);
-            
-            console.log(`Via ${nomBeneficiaireIntermediaire}: ${marquesFiltered.length} marques`);
-            
-            if (marquesFiltered.length > 0) {
-              marques_indirectes[nomBeneficiaireIntermediaire] = marquesFiltered;
-            }
-          }
-        }
-      }
+      const marques_indirectes = marquesTransitives.marquesIndirectes;
 
       console.log(`Résultat pour ${node.beneficiaire.nom}:`, {
         marques_directes: marques_directes.length,

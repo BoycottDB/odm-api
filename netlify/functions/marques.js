@@ -2,6 +2,7 @@
  * Netlify Function - Brands data with search capabilities
  */
 import { createClient } from '@supabase/supabase-js';
+import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -179,47 +180,16 @@ export const handler = async (event) => {
             // Calculer les marques directes (exclure la marque actuelle)
             const marques_directes = toutesMarques.filter(m => m.id !== marque.id);
 
-            // Calculer les marques indirectes via les relations transitives
-            const marques_indirectes = {};
+            // ✅ NOUVELLE LOGIQUE : Calculer TOUTES les marques transitives récursivement (bénéficiaires directs)
+            const marquesTransitivesDirect = await recupererToutesMarquesTransitives(
+              supabase,
+              liaison.Beneficiaires.id,
+              marque.id,
+              new Set(),
+              5
+            );
             
-            // Pour tous les bénéficiaires (directs ET transitifs), calculer les marques indirectes
-            // On cherche les relations entrantes vers ce bénéficiaire (qui profitent À ce bénéficiaire)
-            const { data: relationsEntrantes } = await supabase
-              .from('beneficiaire_relation')
-              .select(`
-                id,
-                beneficiaire_source_id,
-                description_relation,
-                beneficiaire_source:Beneficiaires!beneficiaire_relation_beneficiaire_source_id_fkey (
-                  id,
-                  nom
-                )
-              `)
-              .eq('beneficiaire_cible_id', liaison.Beneficiaires.id);
-
-            if (relationsEntrantes?.length > 0) {
-              for (const relationEntrante of relationsEntrantes) {
-                // Pour chaque bénéficiaire source, récupérer toutes ses marques
-                const { data: marquesIntermediaires } = await supabase
-                  .from('Marque_beneficiaire')
-                  .select(`
-                    Marque!marque_id (id, nom)
-                  `)
-                  .eq('beneficiaire_id', relationEntrante.beneficiaire_source_id);
-
-                if (marquesIntermediaires?.length > 0) {
-                  const nomBeneficiaireIntermediaire = relationEntrante.beneficiaire_source.nom;
-                  // Exclure la marque actuelle des marques indirectes
-                  const marquesFiltered = marquesIntermediaires
-                    .map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
-                    .filter(m => m.id !== marque.id);
-                  
-                  if (marquesFiltered.length > 0) {
-                    marques_indirectes[nomBeneficiaireIntermediaire] = marquesFiltered;
-                  }
-                }
-              }
-            }
+            const marques_indirectes = marquesTransitivesDirect.marquesIndirectes;
 
             // Récupérer les controverses structurées pour ce bénéficiaire
             const { data: controverses } = await supabase
@@ -262,34 +232,17 @@ export const handler = async (event) => {
           // Calculer les marques directes (exclure la marque actuelle)
           const marques_directes = toutesMarques.filter(m => m.id !== marque.id);
 
-          // Calculer les marques indirectes pour les bénéficiaires transitifs
-          const marques_indirectes = {};
+          // ✅ NOUVELLE LOGIQUE : Calculer TOUTES les marques transitives récursivement
+          // Résout le bug : BlackRock doit voir les marques de L'Oréal via Nestlé
+          const marquesTransitives = await recupererToutesMarquesTransitives(
+            supabase,
+            relation.beneficiaire_cible.id, // ID du bénéficiaire transitif (ex: BlackRock)
+            marque.id, // ID de la marque actuelle (à exclure)
+            new Set(),
+            5 // Profondeur max
+          );
           
-          // Pour un bénéficiaire transitif (ex: BlackRock), les marques indirectes sont
-          // les marques des bénéficiaires intermédiaires (ex: Nestlé)
-          // relation.beneficiaire_cible_id = ID du bénéficiaire cible (BlackRock)
-          // relation.nom_cible = nom du bénéficiaire intermédiaire par lequel on passe (Nestlé)
-          
-          // Pour les bénéficiaires transitifs, les marques indirectes sont celles du bénéficiaire source (intermédiaire)
-          // Exemple: BlackRock (transitif) reçoit indirectement les marques de Nestlé (source/intermédiaire)
-          const { data: marquesIntermediaires } = await supabase
-            .from('Marque_beneficiaire')
-            .select(`
-              Marque!marque_id (id, nom)
-            `)
-            .eq('beneficiaire_id', relation.beneficiaire_source_id); // ID du bénéficiaire source/intermédiaire
-
-          if (marquesIntermediaires?.length > 0) {
-            // Exclure la marque actuelle des marques indirectes
-            const marquesFiltered = marquesIntermediaires
-              .map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
-              .filter(m => m.id !== marque.id);
-            
-            if (marquesFiltered.length > 0) {
-              // Grouper par nom du bénéficiaire intermédiaire (source)
-              marques_indirectes[relation.nom_source] = marquesFiltered;
-            }
-          }
+          const marques_indirectes = marquesTransitives.marquesIndirectes;
 
           // Récupérer les controverses structurées pour ce bénéficiaire transitif (cible)
           const { data: controverses } = await supabase

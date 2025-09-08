@@ -2,7 +2,7 @@
 
 API Serverless (Netlify Functions) optimisée pour :
 1. **Extensions Chrome/Firefox** - Synchronisation des données avec cache intelligent
-2. **Application Web ODM** - Architecture hybride pour réduire la charge Supabase *(Nouveau)*
+2. **Application Web ODM** - Architecture hybride pour réduire la charge Supabase 
 
 ## 🎯 Objectifs
 
@@ -11,7 +11,7 @@ API Serverless (Netlify Functions) optimisée pour :
 - Récupérer les mises à jour incrémentales depuis une date donnée
 - Obtenir l'ensemble complet des données en cas de problème
 
-### Pour l'Application Web *(Nouveau)*
+### Pour l'Application Web 
 - Servir de couche de cache optimisée pour les lectures
 - Réduire la charge sur Supabase  
 - Centraliser la logique de requête des données
@@ -99,7 +99,7 @@ Métadonnées de version pour synchronisation intelligente
 ```
 **Cache :** 5 minutes | **Fallback :** updated_at → created_at → timestamp
 
-### 🌐 Endpoints Application Web *(Nouveau)*
+### 🌐 Endpoints Application Web 
 
 #### `GET /marques`
 Données marques avec recherche et pagination
@@ -277,10 +277,10 @@ GET /api/beneficiaires/chaine?marqueId=79&profondeur=5  # Maybelline avec 5 nive
 ```
 
 **Fonctionnalités :**
-- **Algorithme récursif** avec protection contre les cycles infinis
-- **Liens financiers** détaillés pour chaque niveau de la chaîne
+- **Algorithme récursif complet** avec protection contre les cycles infinis
+- **Liens financiers** détaillés pour chaque niveau de la chaîne  
 - **Marques directes** : Toutes les marques liées directement au bénéficiaire (exclut la marque de recherche)
-- **Marques indirectes** : Marques accessibles via les bénéficiaires intermédiaires, organisées par nom d'intermédiaire
+- **Marques indirectes** : Marques accessibles via **tous** les bénéficiaires intermédiaires de façon récursive (ex: BlackRock voit les marques de L'Oréal via Nestlé)
 - **Controverses structurées** avec sources et métadonnées complètes
 
 **Configuration :**
@@ -291,6 +291,24 @@ GET /api/beneficiaires/chaine?marqueId=79&profondeur=5  # Maybelline avec 5 nive
 - Trace la chaîne complète : `Maybelline → Groupe l'Oréal → Nestlé SA → BlackRock + Vanguard`
 - Affiche les "autres marques liées" pour chaque bénéficiaire de la chaîne
 - Permet de découvrir l'étendue complète de l'impact des achats
+
+## 🛠️ Architecture Technique
+
+### Module Utilitaire Partagé
+
+**Fichier :** `netlify/functions/utils/marquesTransitives.js`
+
+Ce module contient la logique centralisée pour calculer les marques transitives des bénéficiaires, évitant la duplication de code entre les endpoints `/marques` et `/beneficiaires-chaine`.
+
+**Fonctionnalités :**
+- `recupererToutesMarquesTransitives()` : Algorithme récursif principal
+- Cache intelligent avec TTL de 30 minutes
+- Protection anti-cycles et limitation de profondeur
+- Support des relations financières complexes
+
+**Utilisé par :**
+- `marques.js` : Calcul des bénéficiaires transitifs avec leurs marques
+- `beneficiaires-chaine.js` : Enrichissement des chaînes avec les marques liées
 
 ## 📊 Structure des Données V2 - Dirigeants Normalisés
 
