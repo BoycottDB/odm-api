@@ -196,8 +196,7 @@ export const handler = async (event) => {
               .from('controverse_beneficiaire')
               .select('*,Categorie!controverse_beneficiaire_categorie_id_fkey(*)')
               .eq('beneficiaire_id', liaison.Beneficiaires.id)
-              .order('date', { ascending: false, nullsFirst: false })
-              .order('ordre');
+              .order('date', { ascending: false, nullsFirst: false });
             
             beneficiaires_marque.push({
               id: liaison.id,
@@ -249,8 +248,7 @@ export const handler = async (event) => {
             .from('controverse_beneficiaire')
             .select('*,Categorie!controverse_beneficiaire_categorie_id_fkey(*)')
             .eq('beneficiaire_id', relation.beneficiaire_cible.id)
-            .order('date', { ascending: false, nullsFirst: false })
-            .order('ordre');
+            .order('date', { ascending: false, nullsFirst: false });
           
           beneficiaires_marque.push({
             id: `transitif-${relation.id}`, // ID unique pour éviter les doublons
