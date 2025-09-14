@@ -48,7 +48,7 @@ const marquesHandler = async (event) => {
   }
 
   try {
-    const { search, limit = '100', offset = '0' } = event.queryStringParameters || {};
+    const { search, limit = '999', offset = '0' } = event.queryStringParameters || {};
     
     // Check cache
     const cacheKey = `marques_${search || 'all'}_${limit}_${offset}`;
