@@ -56,8 +56,7 @@ const marquesHandler = async (event) => {
     const cached = cache.get(cacheKey);
     
     if (cached && (now - cached.timestamp) < CACHE_TTL) {
-      MetricsLogger.logCacheAccess(functionName, cacheKey, true);
-      MetricsLogger.logRequest(functionName, event, Date.now() - startTime, true, 'HIT');
+      MetricsLogger.logCache(functionName, true);
       return {
         statusCode: 200,
         headers: {
@@ -345,10 +344,7 @@ const marquesHandler = async (event) => {
       timestamp: now
     });
 
-    // Log métriques
-    MetricsLogger.logCacheAccess(functionName, cacheKey, false);
-    MetricsLogger.logRequest(functionName, event, Date.now() - startTime, true, 'MISS');
-    MetricsLogger.logCacheStats(functionName, CACHE_TTL, transformedBrands.length);
+    MetricsLogger.logCache(functionName, false);
 
     console.log(`Brands loaded: ${transformedBrands.length} brands (search: ${search || 'none'})`);
     return {
@@ -362,13 +358,7 @@ const marquesHandler = async (event) => {
     };
 
   } catch (error) {
-    MetricsLogger.logError(functionName, error, {
-      search: event.queryStringParameters?.search,
-      limit: event.queryStringParameters?.limit,
-      offset: event.queryStringParameters?.offset
-    });
-    MetricsLogger.logRequest(functionName, event, Date.now() - startTime, false);
-    
+    MetricsLogger.logError(functionName, error);
     console.error('Brands endpoint error:', error);
     return {
       statusCode: 500,
