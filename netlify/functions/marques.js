@@ -3,6 +3,11 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
+import { MetricsLogger } from './utils/metrics.js';
+import { initSentry, sentryHandler } from './utils/sentry.js';
+
+// Initialiser Sentry
+initSentry();
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -20,7 +25,9 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const cache = new Map();
 const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
 
-export const handler = async (event) => {
+const marquesHandler = async (event) => {
+  const startTime = Date.now();
+  const functionName = 'marques';
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -49,12 +56,14 @@ export const handler = async (event) => {
     const cached = cache.get(cacheKey);
     
     if (cached && (now - cached.timestamp) < CACHE_TTL) {
-      console.log('Cache hit for brands');
+      MetricsLogger.logCacheAccess(functionName, cacheKey, true);
+      MetricsLogger.logRequest(functionName, event, Date.now() - startTime, true, 'HIT');
       return {
         statusCode: 200,
         headers: {
           ...headers,
-          'X-Data-Source': 'odm-api-marques-cache'
+          'X-Data-Source': 'odm-api-marques-cache',
+          'X-Cache': 'HIT'
         },
         body: JSON.stringify(cached.data)
       };
@@ -336,17 +345,30 @@ export const handler = async (event) => {
       timestamp: now
     });
 
+    // Log métriques
+    MetricsLogger.logCacheAccess(functionName, cacheKey, false);
+    MetricsLogger.logRequest(functionName, event, Date.now() - startTime, true, 'MISS');
+    MetricsLogger.logCacheStats(functionName, CACHE_TTL, transformedBrands.length);
+
     console.log(`Brands loaded: ${transformedBrands.length} brands (search: ${search || 'none'})`);
     return {
       statusCode: 200,
       headers: {
         ...headers,
-        'X-Data-Source': 'odm-api-marques-fresh'
+        'X-Data-Source': 'odm-api-marques-fresh',
+        'X-Cache': 'MISS'
       },
       body: JSON.stringify(transformedBrands)
     };
 
   } catch (error) {
+    MetricsLogger.logError(functionName, error, {
+      search: event.queryStringParameters?.search,
+      limit: event.queryStringParameters?.limit,
+      offset: event.queryStringParameters?.offset
+    });
+    MetricsLogger.logRequest(functionName, event, Date.now() - startTime, false);
+    
     console.error('Brands endpoint error:', error);
     return {
       statusCode: 500,
@@ -358,3 +380,5 @@ export const handler = async (event) => {
     };
   }
 };
+
+export const handler = sentryHandler(marquesHandler);
