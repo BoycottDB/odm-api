@@ -523,14 +523,15 @@ Statistiques de cache et serveur
 
 ## 📊 Monitoring
 
-### Logs
-- Toutes les requêtes loggées avec timestamp
-- Erreurs détaillées en développement
-- Erreurs masquées en production
+### Logs Essentiels
+- **Cache Hit/Miss** : `[function] Cache HIT/MISS` pour optimisation
+- **Erreurs** : `[function] Error: message` pour debugging
+- **Simplifiés** : Logs minimalistes pour réduire les coûts
 
-### Métriques
-- Statistiques de cache disponibles via `/api/stats`
-- Monitoring des performances en temps réel
+### Stack de Monitoring
+- **Sentry** : Capture automatique des erreurs avec contexte
+- **UptimeRobot** : Surveillance uptime et latence
+- **Console logs** : Métriques cache essentielles uniquement
 
 ## 🚀 Déploiement
 
