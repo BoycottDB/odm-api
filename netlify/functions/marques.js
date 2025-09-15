@@ -5,10 +5,13 @@ import { createClient } from '@supabase/supabase-js';
 import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
 import { MetricsLogger } from './utils/metrics.js';
 import { initSentry, sentryHandler } from './utils/sentry.js';
-import { unifiedCache } from './utils/unifiedCache.js';
+import { createServerlessCache } from './utils/serverlessCache.js';
 
 // Initialiser Sentry
 initSentry();
+
+// Cache unifié pour marques
+const cache = createServerlessCache('marques');
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -53,7 +56,7 @@ const marquesHandler = async (event) => {
     // Déterminer le type de cache selon la requête
     const endpointType = search ? 'marques_search' : 'marques_all';
     const params = { search: search || null, limit, offset };
-    const cached = unifiedCache.get(endpointType, params);
+    const cached = cache.get(endpointType, params);
 
     if (cached) {
       MetricsLogger.logCache(functionName, true);
@@ -233,7 +236,7 @@ const marquesHandler = async (event) => {
     );
 
     // Cache unifié avec TTL automatique
-    unifiedCache.set(endpointType, transformedBrands, params);
+    cache.set(endpointType, transformedBrands, params);
 
     MetricsLogger.logCache(functionName, false);
 
@@ -245,7 +248,7 @@ const marquesHandler = async (event) => {
         'X-Data-Source': 'odm-api-marques-fresh-unified',
         'X-Cache': 'MISS',
         'X-Cache-Type': endpointType,
-        'X-Cache-Metrics': JSON.stringify(unifiedCache.getMetrics())
+        'X-Cache-Metrics': JSON.stringify(cache.getMetrics())
       },
       body: JSON.stringify(transformedBrands)
     };

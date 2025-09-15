@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
-import { unifiedCache } from './utils/unifiedCache.js';
+import { createServerlessCache } from './utils/serverlessCache.js';
+
+// Cache unifié pour bénéficiaires
+const cache = createServerlessCache('beneficiaires_chaine');
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -74,7 +77,7 @@ async function enrichirAvecMarquesLiees(chaineNodes, marqueId) {
       // Calculer les marques directes (exclure la marque actuelle de recherche)
       const marques_directes = toutesMarques.filter(m => m.id !== marqueId);
 
-      // ✅ NOUVELLE LOGIQUE : Utiliser la fonction récursive partagée
+      // Utiliser la fonction récursive partagée
       const marquesTransitives = await recupererToutesMarquesTransitives(
         supabase,
         beneficiaireId,
@@ -247,7 +250,7 @@ export const handler = async (event) => {
 
   try {
     // Vérifier le cache unifié
-    const cached = unifiedCache.get('beneficiaires_chaine', params);
+    const cached = cache.get('beneficiaires_chaine', params);
     if (cached) {
       console.log(`Cache hit unifié pour marque ${marqueId}`);
       return successResponse(cached);
@@ -297,7 +300,7 @@ export const handler = async (event) => {
       };
       
       // Cache unifié même les résultats vides
-      unifiedCache.set('beneficiaires_chaine', resultat, params);
+      cache.set('beneficiaires_chaine', resultat, params);
       return successResponse(resultat);
     }
 
@@ -340,7 +343,7 @@ export const handler = async (event) => {
     };
 
     // Cache unifié avec TTL automatique
-    unifiedCache.set('beneficiaires_chaine', resultat, params);
+    cache.set('beneficiaires_chaine', resultat, params);
 
     console.log(`Chaîne construite pour ${marque.nom}: ${chaineUnique.length} nœuds, profondeur ${resultat.profondeur_max}`);
 
