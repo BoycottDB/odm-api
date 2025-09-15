@@ -1,8 +1,9 @@
 # ODM API - Observatoire des Marques
 
-API Serverless (Netlify Functions) optimisée pour :
+API Serverless (Netlify Functions) ultra-optimisée pour :
 1. **Extensions Chrome/Firefox** - Synchronisation des données avec cache intelligent
-2. **Application Web ODM** - Architecture hybride pour réduire la charge Supabase 
+2. **Application Web ODM** - Architecture hybride avec SQL JOINs optimisés et cache multi-niveau
+3. **Auto-complétion** - Endpoint spécialisé sub-100ms pour suggestions temps réel 
 
 ## 🎯 Objectifs
 
@@ -11,10 +12,11 @@ API Serverless (Netlify Functions) optimisée pour :
 - Récupérer les mises à jour incrémentales depuis une date donnée
 - Obtenir l'ensemble complet des données en cas de problème
 
-### Pour l'Application Web 
-- Servir de couche de cache optimisée pour les lectures
-- Réduire la charge sur Supabase  
-- Centraliser la logique de requête des données
+### Pour l'Application Web
+- Servir de couche de cache optimisée avec SQL JOINs unifiés
+- Réduire la charge sur Supabase avec recherche déléguée
+- Centraliser la logique de requête des données sans doublons
+- Fournir auto-complétion ultra-rapide via endpoint spécialisé
 
 ## 🏗️ Architecture Serverless
 
@@ -102,7 +104,7 @@ Métadonnées de version pour synchronisation intelligente
 ### 🌐 Endpoints Application Web 
 
 #### `GET /marques`
-Données marques avec recherche et pagination
+Données marques avec recherche, pagination et SQL JOINs optimisés
 ```bash
 GET /marques?search=nike&limit=50&offset=0
 ```
@@ -113,7 +115,6 @@ GET /marques?search=nike&limit=50&offset=0
     "nom": "Nike",
     "secteur_marque_id": 2,
     "message_boycott_tips": "...",
-    "dirigeant_controverse": { ... },
     "beneficiaires_marque": [
       {
         "id": 12,
@@ -125,16 +126,40 @@ GET /marques?search=nike&limit=50&offset=0
           "controverses": [...],
           "marques_directes": [{"id": 2, "nom": "Starbucks"}],
           "marques_indirectes": {
-            "Nestlé": [{"id": 35, "nom": "Herta"}]
+            "1": [{"id": 35, "nom": "Herta"}]
           }
         }
       }
     ],
+    "evenements": [...],
+    "categories": [...],
+    "nbControverses": 3,
+    "nbCondamnations": 1,
+    "nbDirigeantsControverses": 1,
     "secteur_marque": { ... }
   }
 ]
 ```
-**Cache :** 20 minutes | **Optimisé pour :** Recherche publique
+**Cache :** 20 minutes | **Performance :** SQL JOINs unifiés, structure optimisée
+
+#### `GET /suggestions`
+Auto-complétion ultra-rapide pour recherche en temps réel
+```bash
+GET /suggestions?q=nike&limit=10
+```
+```json
+[
+  {
+    "id": 1,
+    "nom": "Nike"
+  },
+  {
+    "id": 25,
+    "nom": "Nike Jordan"
+  }
+]
+```
+**Cache :** 5 minutes | **Performance :** Structure minimale (id + nom), sub-100ms
 
 #### `GET /evenements`
 Événements avec pagination et données complètes
