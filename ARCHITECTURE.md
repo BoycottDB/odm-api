@@ -198,50 +198,51 @@ export const handler = async (event, context) => {
 
 ### suggestions.js - Auto-complétion Ultra-rapide (Solution 1)
 ```javascript
-// Architecture: Endpoint spécialisé pour auto-complétion sub-100ms
-export const handler = async (event) => {
-  const { q: query } = event.queryStringParameters || {}
-  const cacheKey = `suggestions-${query}`
+// Architecture: Endpoint spécialisé pour auto-complétion sub-100ms + Cache serverless
+import { createServerlessCache } from './utils/serverlessCache.js'
 
-  // Cache agressif pour suggestions - 5min
-  if (cache.has(cacheKey)) {
-    const cached = cache.get(cacheKey)
-    if (Date.now() - cached.timestamp < 5 * 60 * 1000) {
-      return successResponse(cached.data)
+// Cache spécialisé pour cette fonction
+const cache = createServerlessCache('suggestions')
+
+export const handler = async (event) => {
+  const { q, limit = '10' } = event.queryStringParameters || {}
+
+  if (!q || q.trim().length < 1) {
+    return successResponse([])
+  }
+
+  // Check cache serverless optimisé
+  const params = { q: q.toLowerCase().trim(), limit }
+  const cached = cache.get('suggestions', params)
+
+  if (cached) {
+    return {
+      statusCode: 200,
+      headers: {
+        ...headers,
+        'X-Data-Source': 'odm-api-suggestions-cache-unified',
+        'X-Cache': 'HIT'
+      },
+      body: JSON.stringify(cached)
     }
   }
 
-  if (!query || query.length < 2) {
-    return successResponse({ suggestions: [] })
-  }
+  // Requête ultra-optimisée : seulement id + nom
+  const { data: marques, error } = await supabase
+    .from('Marque')
+    .select('id, nom')
+    .ilike('nom', `%${q.trim()}%`)
+    .limit(parseInt(limit))
+    .order('nom')
 
-  // Requête optimisée marques + bénéficiaires
-  const [marquesSuggestions, beneficiairesSuggestions] = await Promise.all([
-    supabase
-      .from('Marque')
-      .select('id, nom')
-      .ilike('nom', `%${query}%`)
-      .limit(5),
-    supabase
-      .from('Beneficiaires')
-      .select('id, nom')
-      .ilike('nom', `%${query}%`)
-      .limit(5)
-  ])
+  if (error) throw error
 
-  const suggestions = [
-    ...(marquesSuggestions.data || []).map(m => ({
-      id: m.id, nom: m.nom, type: 'marque'
-    })),
-    ...(beneficiairesSuggestions.data || []).map(b => ({
-      id: b.id, nom: b.nom, type: 'beneficiaire'
-    }))
-  ].slice(0, 8) // Max 8 suggestions
+  const suggestions = marques || []
 
-  const result = { suggestions }
-  cache.set(cacheKey, { data: result, timestamp: Date.now() })
+  // Cache serverless avec TTL automatique (5 minutes pour suggestions)
+  cache.set('suggestions', suggestions, params)
 
-  return successResponse(result)
+  return successResponse(suggestions)
 }
 ```
 **Patterns utilisés :**
@@ -537,27 +538,46 @@ marque_dirigeant (
 - **Performance** : Requêtes optimisées avec relations normalisées
 - **Évolutivité** : Ajout de nouveaux dirigeants sans duplication
 
-## 🔄 Cache Strategy - Multi-Layer
+## 🔄 Cache Strategy - Serverless Multi-Layer
 
-### Niveau 1 : In-Memory Function Cache
+### Niveau 1 : Serverless Function Cache
+**Architecture :** Chaque function Netlify dispose de son propre cache isolé avec configuration TTL unifiée.
+
 ```javascript
-const cache = new Map()
-const TTL = {
+// serverlessCache.js - Cache optimisé pour Netlify Functions
+class ServerlessCache {
+  constructor(functionName) {
+    this.functionName = functionName
+    this.cache = new Map()
+    this.hitCount = 0
+    this.missCount = 0
+    this.maxSize = this.getMaxSizeForFunction(functionName)
+  }
+}
+
+const SERVERLESS_TTL = {
   // Endpoints optimisés (Solutions 1, 2, 3)
-  SUGGESTIONS: 5 * 60 * 1000,        // 5 minutes - auto-complétion ultra-rapide
-  MARQUES_SEARCH: 10 * 60 * 1000,    // 10 minutes - recherche déléguée
-  MARQUES_ALL: 20 * 60 * 1000,       // 20 minutes - liste complète avec SQL JOINs
+  suggestions: 5 * 60 * 1000,        // 5 minutes - auto-complétion ultra-rapide
+  marques_search: 10 * 60 * 1000,    // 10 minutes - recherche déléguée
+  marques_all: 20 * 60 * 1000,       // 20 minutes - liste complète avec SQL JOINs
 
   // Endpoints existants
-  VERSION: 5 * 60 * 1000,            // 5 minutes - frequently accessed
-  UPDATES: 10 * 60 * 1000,           // 10 minutes - moderate frequency
-  FULL: 30 * 60 * 1000,              // 30 minutes - heavy payload
-  BENEFICIAIRES_CHAINE: 10 * 60 * 1000,  // 10 minutes - chaîne avec marques optimisée
-  EVENEMENTS: 15 * 60 * 1000,        // 15 minutes - événements avec pagination
-  CATEGORIES: 60 * 60 * 1000,         // 1 heure - catégories quasi-statiques
-  SECTEURS: 60 * 60 * 1000           // 1 heure - secteurs marques stables
+  version: 5 * 60 * 1000,            // 5 minutes - frequently accessed
+  updates: 10 * 60 * 1000,           // 10 minutes - moderate frequency
+  full: 30 * 60 * 1000,              // 30 minutes - heavy payload
+  beneficiaires_chaine: 15 * 60 * 1000,  // 15 minutes - chaîne avec marques optimisée
+  evenements: 15 * 60 * 1000,        // 15 minutes - événements avec pagination
+  categories: 60 * 60 * 1000,         // 1 heure - catégories quasi-statiques
+  secteurs: 60 * 60 * 1000           // 1 heure - secteurs marques stables
 }
 ```
+
+**Fonctionnalités clés :**
+- **Isolation serverless** : Chaque function a son cache dédié
+- **Nettoyage automatique** : LRU avec cycle toutes les 10 minutes
+- **Métriques intégrées** : Hit rate, cache size, performance
+- **Clés standardisées** : Évite fragmentation avec tri des paramètres
+- **TTL adaptatif** : Configuration selon type de données
 
 ## 🌐 Application Web Support - Architecture Optimisée
 

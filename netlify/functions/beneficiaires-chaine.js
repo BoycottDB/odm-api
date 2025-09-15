@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
+import { unifiedCache } from './utils/unifiedCache.js';
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -11,9 +12,8 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Cache in-memory pour les chaînes de bénéficiaires
-const cache = new Map();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes - données relativement stables
+// Utilisation du cache unifié
+// TTL automatique : 15 minutes pour chaînes de bénéficiaires
 
 // Headers CORS et cache
 const corsHeaders = {
@@ -22,8 +22,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
-  'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1800', // 10min cache + 30min stale
-  'X-Data-Source': 'odm-api-chaine'
+  'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=1800', // 15min cache + 30min stale
+  'X-Data-Source': 'odm-api-chaine-unified'
 };
 
 // Fonction utilitaire pour les réponses
@@ -243,16 +243,14 @@ export const handler = async (event) => {
   }
 
   const profondeurMax = parseInt(profondeur || '5');
-  const cacheKey = `chaine-${marqueId}-${profondeurMax}`;
+  const params = { marqueId, profondeurMax };
 
   try {
-    // Vérifier le cache
-    if (cache.has(cacheKey)) {
-      const cached = cache.get(cacheKey);
-      if (Date.now() - cached.timestamp < CACHE_TTL) {
-        console.log(`Cache hit pour marque ${marqueId}`);
-        return successResponse(cached.data);
-      }
+    // Vérifier le cache unifié
+    const cached = unifiedCache.get('beneficiaires_chaine', params);
+    if (cached) {
+      console.log(`Cache hit unifié pour marque ${marqueId}`);
+      return successResponse(cached);
     }
 
     console.log(`Cache miss pour marque ${marqueId}, construction de la chaîne...`);
@@ -298,8 +296,8 @@ export const handler = async (event) => {
         profondeur_max: 0
       };
       
-      // Cache même les résultats vides
-      cache.set(cacheKey, { data: resultat, timestamp: Date.now() });
+      // Cache unifié même les résultats vides
+      unifiedCache.set('beneficiaires_chaine', resultat, params);
       return successResponse(resultat);
     }
 
@@ -341,8 +339,8 @@ export const handler = async (event) => {
       profondeur_max: chaineEnrichie.length > 0 ? Math.max(...chaineEnrichie.map(node => node.niveau)) : 0
     };
 
-    // Mettre en cache
-    cache.set(cacheKey, { data: resultat, timestamp: Date.now() });
+    // Cache unifié avec TTL automatique
+    unifiedCache.set('beneficiaires_chaine', resultat, params);
 
     console.log(`Chaîne construite pour ${marque.nom}: ${chaineUnique.length} nœuds, profondeur ${resultat.profondeur_max}`);
 

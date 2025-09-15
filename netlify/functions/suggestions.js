@@ -5,6 +5,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { MetricsLogger } from './utils/metrics.js';
 import { initSentry, sentryHandler } from './utils/sentry.js';
+import { createServerlessCache } from './utils/serverlessCache.js';
+
+// Cache spécialisé pour cette fonction
+const cache = createServerlessCache('suggestions');
 
 // Initialiser Sentry
 initSentry();
@@ -21,9 +25,8 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
   auth: { persistSession: false }
 }) : null;
 
-// Cache spécialisé pour suggestions (TTL plus court pour freshness)
-const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes pour suggestions temps réel
+// Utilisation du cache unifié
+// TTL géré automatiquement par unifiedCache selon l'endpoint
 
 const suggestionsHandler = async (event) => {
   const startTime = Date.now();
@@ -62,21 +65,20 @@ const suggestionsHandler = async (event) => {
       };
     }
 
-    // Check cache optimisé pour suggestions
-    const cacheKey = `suggestions_${q.toLowerCase().trim()}_${limit}`;
-    const now = Date.now();
-    const cached = cache.get(cacheKey);
+    // Check cache serverless optimisé
+    const params = { q: q.toLowerCase().trim(), limit };
+    const cached = cache.get('suggestions', params);
 
-    if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    if (cached) {
       MetricsLogger.logCache(functionName, true);
       return {
         statusCode: 200,
         headers: {
           ...headers,
-          'X-Data-Source': 'odm-api-suggestions-cache',
+          'X-Data-Source': 'odm-api-suggestions-cache-unified',
           'X-Cache': 'HIT'
         },
-        body: JSON.stringify(cached.data)
+        body: JSON.stringify(cached)
       };
     }
 
@@ -96,21 +98,8 @@ const suggestionsHandler = async (event) => {
 
     const suggestions = marques || [];
 
-    // Cache les résultats
-    cache.set(cacheKey, {
-      data: suggestions,
-      timestamp: now
-    });
-
-    // Nettoyage périodique du cache (garde seulement les 100 plus récents)
-    if (cache.size > 100) {
-      const entries = Array.from(cache.entries());
-      entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-      cache.clear();
-      entries.slice(0, 100).forEach(([key, value]) => {
-        cache.set(key, value);
-      });
-    }
+    // Cache serverless avec TTL automatique (5 minutes pour suggestions)
+    cache.set('suggestions', suggestions, params);
 
     MetricsLogger.logCache(functionName, false);
 
@@ -118,9 +107,10 @@ const suggestionsHandler = async (event) => {
       statusCode: 200,
       headers: {
         ...headers,
-        'X-Data-Source': 'odm-api-suggestions',
+        'X-Data-Source': 'odm-api-suggestions-unified',
         'X-Cache': 'MISS',
-        'X-Query-Time': `${Date.now() - startTime}ms`
+        'X-Query-Time': `${Date.now() - startTime}ms`,
+        'X-Cache-Metrics': JSON.stringify(cache.getMetrics())
       },
       body: JSON.stringify(suggestions)
     };

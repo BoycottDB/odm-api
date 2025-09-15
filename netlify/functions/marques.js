@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
 import { MetricsLogger } from './utils/metrics.js';
 import { initSentry, sentryHandler } from './utils/sentry.js';
+import { unifiedCache } from './utils/unifiedCache.js';
 
 // Initialiser Sentry
 initSentry();
@@ -21,9 +22,8 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
   auth: { persistSession: false }
 }) : null;
 
-// Cache
-const cache = new Map();
-const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
+// Utilisation du cache unifié
+// TTL adapté automatiquement : 10min (recherche) ou 20min (liste complète)
 
 const marquesHandler = async (event) => {
   const startTime = Date.now();
@@ -50,21 +50,22 @@ const marquesHandler = async (event) => {
   try {
     const { search, limit = '999', offset = '0' } = event.queryStringParameters || {};
     
-    // Check cache
-    const cacheKey = `marques_${search || 'all'}_${limit}_${offset}`;
-    const now = Date.now();
-    const cached = cache.get(cacheKey);
-    
-    if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    // Déterminer le type de cache selon la requête
+    const endpointType = search ? 'marques_search' : 'marques_all';
+    const params = { search: search || null, limit, offset };
+    const cached = unifiedCache.get(endpointType, params);
+
+    if (cached) {
       MetricsLogger.logCache(functionName, true);
       return {
         statusCode: 200,
         headers: {
           ...headers,
-          'X-Data-Source': 'odm-api-marques-cache',
-          'X-Cache': 'HIT'
+          'X-Data-Source': 'odm-api-marques-cache-unified',
+          'X-Cache': 'HIT',
+          'X-Cache-Type': endpointType
         },
-        body: JSON.stringify(cached.data)
+        body: JSON.stringify(cached)
       };
     }
 
@@ -231,11 +232,8 @@ const marquesHandler = async (event) => {
       })
     );
 
-    // Cache the result
-    cache.set(cacheKey, {
-      data: transformedBrands,
-      timestamp: now
-    });
+    // Cache unifié avec TTL automatique
+    unifiedCache.set(endpointType, transformedBrands, params);
 
     MetricsLogger.logCache(functionName, false);
 
@@ -244,8 +242,10 @@ const marquesHandler = async (event) => {
       statusCode: 200,
       headers: {
         ...headers,
-        'X-Data-Source': 'odm-api-marques-fresh',
-        'X-Cache': 'MISS'
+        'X-Data-Source': 'odm-api-marques-fresh-unified',
+        'X-Cache': 'MISS',
+        'X-Cache-Type': endpointType,
+        'X-Cache-Metrics': JSON.stringify(unifiedCache.getMetrics())
       },
       body: JSON.stringify(transformedBrands)
     };

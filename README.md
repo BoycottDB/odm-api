@@ -319,6 +319,25 @@ GET /api/beneficiaires/chaine?marqueId=79&profondeur=5  # Maybelline avec 5 nive
 
 ## 🛠️ Architecture Technique
 
+### Cache Serverless Intelligent
+
+**Fichier :** `netlify/functions/utils/serverlessCache.js`
+
+Système de cache adapté aux contraintes serverless où chaque function Netlify dispose de son propre cache isolé.
+
+**Fonctionnalités :**
+- Cache par function avec configuration TTL unifiée
+- Nettoyage automatique LRU pour éviter overflow mémoire
+- Métriques intégrées (hit rate, cache size)
+- Clés standardisées pour éviter fragmentation
+- TTL adaptatif selon type d'endpoint
+
+**Endpoints de monitoring :**
+- `cache-metrics.js` : Métriques temps réel du cache
+- `cache-benchmark.js` : Tests de performance et stress test
+
+**Utilisé par :** `suggestions.js`, `marques.js`, `beneficiaires-chaine.js`
+
 ### Module Utilitaire Partagé
 
 **Fichier :** `netlify/functions/utils/marquesTransitives.js`
@@ -391,11 +410,11 @@ Marques des bénéficiaires qui profitent au bénéficiaire via relations transi
   },
   "beneficiaires_marque": [{
     "beneficiaire": {
-      "controverses": [{                   // ✅ Objets structurés (V2)
+      "controverses": [{                   
         "titre": "Titre 1",
         "source_url": "url1"
       }],
-      "marques_directes": [...],           // ✅ Nouvelles propriétés (V2)
+      "marques_directes": [...],           
       "marques_indirectes": {...}
     }
   }]
