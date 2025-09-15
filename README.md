@@ -338,6 +338,12 @@ Système de cache adapté aux contraintes serverless où chaque function Netlify
 
 **Utilisé par :** `suggestions.js`, `marques.js`, `beneficiaires-chaine.js`
 
+**🎯 Post-Optimisation Architecture Unifiée :**
+- Cache unifié partagé entre toutes les functions (vs cache fragmenté)
+- Interface `createServerlessCache()` cohérente partout
+- Hit rate amélioré grâce à la stratification intelligente (TTL adaptatif)
+- Architecture sans dette technique (ex-unifiedCache uniformisé)
+
 ### Module Utilitaire Partagé
 
 **Fichier :** `netlify/functions/utils/marquesTransitives.js`

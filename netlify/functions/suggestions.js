@@ -26,7 +26,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 }) : null;
 
 // Utilisation du cache unifié
-// TTL géré automatiquement par unifiedCache selon l'endpoint
+// TTL géré automatiquement par cache selon l'endpoint
 
 const suggestionsHandler = async (event) => {
   const startTime = Date.now();

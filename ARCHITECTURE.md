@@ -588,8 +588,9 @@ L'API supporte l'application web avec des optimisations de performance majeures 
 - **Endpoint `/suggestions`** : Auto-complétion sub-100ms (Solution 1)
 - **Recherche déléguée** : Filtrage serveur réduit trafic de 60% (Solution 2)
 - **SQL JOINs unifiés** : Élimination anti-patterns N+1 (Solution 3)
+- **Architecture unifiée** : Cache intelligent partagé entre recherche et suggestions (Solution 5)
 - **Structure sans duplication** : Format `beneficiaires_marque` consolidé
-- **Cache intelligent** : TTL adaptatif selon type de requête
+- **Cache multi-niveau** : TTL adaptatif avec extraction intelligente
 
 #### marques.js - Liste des Marques Optimisée (Solutions 2 & 3)
 ```javascript
