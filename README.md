@@ -104,7 +104,7 @@ Métadonnées de version pour synchronisation intelligente
 ### 🌐 Endpoints Application Web 
 
 #### `GET /marques`
-Données marques avec recherche, pagination et SQL JOINs optimisés
+Données marques avec recherche par nom exact (insensible à la casse), pagination et SQL JOINs optimisés
 ```bash
 GET /marques?search=nike&limit=50&offset=0
 ```
@@ -142,6 +142,11 @@ GET /marques?search=nike&limit=50&offset=0
 ```
 **Cache :** 20 minutes | **Performance :** SQL JOINs unifiés, structure optimisée
 
+Sémantique de recherche:
+- Paramètre `search` = match exact (case-insensitive) sur `nom` (ILIKE sans wildcards).
+- Les `evenements` retournés sous chaque marque sont normalisés pour le frontend: ils incluent l'objet `marque` (id, nom, secteur, message_boycott_tips, secteur_marque) et l'objet `categorie` (id, nom, emoji, couleur, ordre) pour alimenter directement l'UI (`EventList`/`EventCard`).
+- La SearchBar de l'application web effectue uniquement une recherche de marque via cet endpoint; aucune recherche par mots-clés (titre/catégorie) n'est réalisée.
+
 #### `GET /suggestions`
 Auto-complétion ultra-rapide pour recherche en temps réel
 ```bash
@@ -160,6 +165,9 @@ GET /suggestions?q=nike&limit=10
 ]
 ```
 **Cache :** 5 minutes | **Performance :** Structure minimale (id + nom), sub-100ms
+
+Sémantique:
+- Préfixe uniquement (startsWith), insensible à la casse (ILIKE avec wildcard de fin seulement : `q%`).
 
 #### `GET /evenements`
 Événements avec pagination et données complètes
@@ -181,6 +189,10 @@ GET /evenements?limit=100&offset=0
 ]
 ```
 **Cache :** 15 minutes | **Optimisé pour :** Timeline publique
+
+Usage:
+- Utilisé pour la timeline par défaut (chargement initial sans requête).
+- Non utilisé par la SearchBar (qui recherche des marques uniquement via `/marques`).
 
 #### `GET /categories`
 Catégories d'événements actives

@@ -90,7 +90,7 @@ const suggestionsHandler = async (event) => {
     const { data: marques, error } = await supabase
       .from('Marque')
       .select('id, nom')
-      .ilike('nom', `%${q.trim()}%`)
+      .ilike('nom', `${q.trim()}%`)
       .limit(parseInt(limit))
       .order('nom');
 

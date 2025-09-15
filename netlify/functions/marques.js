@@ -82,9 +82,11 @@ const marquesHandler = async (event) => {
         *,
         Evenement!marque_id (
           id,
+          marque_id,
           titre,
           date,
           source_url,
+          reponse,
           condamnation_judiciaire,
           Categorie!categorie_id (
             id,
@@ -140,7 +142,8 @@ const marquesHandler = async (event) => {
 
     // Apply search filter if provided
     if (search) {
-      query = query.ilike('nom', `%${search}%`);
+      // Exact brand match (case-insensitive) - no wildcards
+      query = query.ilike('nom', search);
     }
 
     // Apply pagination
@@ -219,10 +222,32 @@ const marquesHandler = async (event) => {
         // Nettoyer les données pour éviter duplication
         const { SecteurMarque, Marque_beneficiaire, Evenement, ...marqueClean } = marque;
 
+        // Unifier la forme des événements retournés (alignée sur /.netlify/functions/evenements)
+        const marqueEmbed = {
+          id: marqueClean.id,
+          nom: marqueClean.nom,
+          secteur_marque_id: marqueClean.secteur_marque_id,
+          message_boycott_tips: marqueClean.message_boycott_tips,
+          secteur_marque: SecteurMarque || null
+        };
+        const evenementsTransformed = evenements.map(ev => ({
+          id: ev.id,
+          marque_id: ev.marque_id ?? marqueClean.id,
+          titre: ev.titre ?? ev.description,
+          description: ev.description,
+          date: ev.date,
+          categorie_id: ev.Categorie ? ev.Categorie.id : null,
+          source_url: ev.source_url,
+          reponse: ev.reponse,
+          condamnation_judiciaire: ev.condamnation_judiciaire === true,
+          marque: marqueEmbed,
+          categorie: ev.Categorie || null
+        }));
+
         return {
           ...marqueClean,
           // Événements et catégories
-          evenements,
+          evenements: evenementsTransformed,
           categories,
           // Statistiques
           nbControverses,
