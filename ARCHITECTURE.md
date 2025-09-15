@@ -231,7 +231,7 @@ export const handler = async (event) => {
   const { data: marques, error } = await supabase
     .from('Marque')
     .select('id, nom')
-    .ilike('nom', `%${q.trim()}%`)
+    .ilike('nom', `${q.trim()}%`)
     .limit(parseInt(limit))
     .order('nom')
 
@@ -591,6 +591,8 @@ L'API supporte l'application web avec des optimisations de performance majeures 
 - **Architecture unifiée** : Cache intelligent partagé entre recherche et suggestions (Solution 5)
 - **Structure sans duplication** : Format `beneficiaires_marque` consolidé
 - **Cache multi-niveau** : TTL adaptatif avec extraction intelligente
+ 
+> Note: La SearchBar de l'application web est limitée à la recherche de marques uniquement. La requête est un match exact (insensible à la casse) sur le nom de marque via l'endpoint `/marques`. Les suggestions utilisent un match préfixe (startsWith) via l'endpoint `/suggestions`. Les mots-clés (titre/catégorie d'événement) ne sont pas pris en charge dans cette page.
 
 #### marques.js - Liste des Marques Optimisée (Solutions 2 & 3)
 ```javascript
@@ -626,7 +628,7 @@ export const handler = async (event) => {
 
   // Recherche déléguée côté serveur (Solution 2)
   if (searchQuery) {
-    query = query.ilike('nom', `%${searchQuery}%`)
+    query = query.ilike('nom', searchQuery)
   }
 
   const { data: brands } = await query.order('nom')
