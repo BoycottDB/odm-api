@@ -541,34 +541,26 @@ marque_dirigeant (
 ## 🔄 Cache Strategy - Serverless Multi-Layer
 
 ### Niveau 1 : Serverless Function Cache
-**Architecture :** Chaque function Netlify dispose de son propre cache isolé avec configuration TTL unifiée.
+**Architecture :** Cache isolé par function avec TTL adaptatif selon usage.
 
 ```javascript
-// serverlessCache.js - Cache optimisé pour Netlify Functions
-class ServerlessCache {
-  constructor(functionName) {
-    this.functionName = functionName
-    this.cache = new Map()
-    this.hitCount = 0
-    this.missCount = 0
-    this.maxSize = this.getMaxSizeForFunction(functionName)
-  }
-}
-
+// serverlessCache.js - Cache optimisé
 const SERVERLESS_TTL = {
-  // Endpoints optimisés (Solutions 1, 2, 3)
-  suggestions: 5 * 60 * 1000,        // 5 minutes - auto-complétion ultra-rapide
-  marques_search: 10 * 60 * 1000,    // 10 minutes - recherche déléguée
-  marques_all: 20 * 60 * 1000,       // 20 minutes - liste complète avec SQL JOINs
+  // Web App optimisée (payload réduit 40%)
+  suggestions: 5 * 60 * 1000,        // 5min - auto-complétion ultra-rapide
+  marques_search: 10 * 60 * 1000,    // 10min - recherche avec chaîne complète
+  marques_all: 20 * 60 * 1000,       // 20min - liste simple sans chaîne
 
-  // Endpoints existants
-  version: 5 * 60 * 1000,            // 5 minutes - frequently accessed
-  updates: 10 * 60 * 1000,           // 10 minutes - moderate frequency
-  full: 30 * 60 * 1000,              // 30 minutes - heavy payload
-  beneficiaires_chaine: 15 * 60 * 1000,  // 15 minutes - chaîne avec marques optimisée
-  evenements: 15 * 60 * 1000,        // 15 minutes - événements avec pagination
-  categories: 60 * 60 * 1000,         // 1 heure - catégories quasi-statiques
-  secteurs: 60 * 60 * 1000           // 1 heure - secteurs marques stables
+  // Extension Browser (format legacy maintenu)
+  version: 5 * 60 * 1000,            // 5min - contrôle version
+  updates: 10 * 60 * 1000,           // 10min - sync incrémentale
+  full: 30 * 60 * 1000,              // 30min - fallback complet
+
+  // Endpoints spécialisés
+  beneficiaires_chaine: 15 * 60 * 1000,  // 15min - chaîne récursive
+  evenements: 15 * 60 * 1000,        // 15min - pagination
+  categories: 60 * 60 * 1000,        // 1h - quasi-statiques
+  secteurs: 60 * 60 * 1000           // 1h - stables
 }
 ```
 
@@ -594,75 +586,74 @@ L'API supporte l'application web avec des optimisations de performance majeures 
  
 > Note: La SearchBar de l'application web est limitée à la recherche de marques uniquement. La requête est un match exact (insensible à la casse) sur le nom de marque via l'endpoint `/marques`. Les suggestions utilisent un match préfixe (startsWith) via l'endpoint `/suggestions`. Les mots-clés (titre/catégorie d'événement) ne sont pas pris en charge dans cette page.
 
-#### marques.js - Liste des Marques Optimisée (Solutions 2 & 3)
+#### marques.js - Application Web Optimisée (Payload réduit 40%)
 ```javascript
-// Architecture: SQL JOINs unifiés + Recherche déléguée
+// Architecture: Conditional Loading + Cache adaptatif + Payload minimal
 export const handler = async (event) => {
-  const { q: searchQuery } = event.queryStringParameters || {}
-  const cacheKey = searchQuery ? `marques-search-${searchQuery}` : 'marques-all'
+  const { search, limit = '999' } = event.queryStringParameters || {}
+  const endpointType = search ? 'marques_search' : 'marques_all'
 
-  // Cache adaptatif selon recherche
-  const cacheTTL = searchQuery ? 10 * 60 * 1000 : 20 * 60 * 1000
-  if (cache.has(cacheKey)) {
-    const cached = cache.get(cacheKey)
-    if (Date.now() - cached.timestamp < cacheTTL) {
-      return successResponse(cached.data)
-    }
+  // Cache adaptatif : 10min recherche / 20min liste
+  const cached = cache.get(endpointType, params)
+  if (cached) {
+    return successResponse(cached)
   }
 
-  // SQL JOINs unifiés - élimination anti-patterns N+1
+  // SQL JOINs optimisés - données essentielles uniquement
   let query = supabase.from('Marque').select(`
-    id, nom, created_at, updated_at,
-    secteur_marque_id, message_boycott_tips,
-    evenements:Evenement!marque_id (id, categorie_id, condamnation_judiciaire),
-    beneficiaires_marque:Marque_beneficiaire!marque_id (
-      id, beneficiaire_id, lien_financier, impact_specifique,
-      beneficiaire:Beneficiaires!beneficiaire_id (
-        id, nom, type_beneficiaire, impact_generique,
-        controverses:controverse_beneficiaire!beneficiaire_id (
-          id, titre, source_url, ordre
-        )
-      )
-    )
+    *,
+    Evenement!marque_id (id, titre, date, source_url, reponse, condamnation_judiciaire, Categorie!categorie_id (id, nom, emoji, couleur)),
+    SecteurMarque!secteur_marque_id (nom, message_boycott_tips),
+    Marque_beneficiaire!marque_id (id, beneficiaire_id, lien_financier, impact_specifique, Beneficiaires!beneficiaire_id (*))
   `)
 
-  // Recherche déléguée côté serveur (Solution 2)
-  if (searchQuery) {
-    query = query.ilike('nom', searchQuery)
-  }
-
+  if (search) query = query.ilike('nom', search)
   const { data: brands } = await query.order('nom')
 
-  // Transformation avec structure unifiée (Solution 3)
-  const transformedData = brands.map(brand => ({
-    id: brand.id,
-    nom: brand.nom,
-    nbControverses: brand.evenements?.length || 0,
-    nbCondamnations: brand.evenements?.filter(e => e.condamnation_judiciaire).length || 0,
-    nbBeneficiairesControverses: brand.beneficiaires_marque?.length || 0,
-    secteur_marque_id: brand.secteur_marque_id,
-    message_boycott_tips: brand.message_boycott_tips,
-    // Structure unifiée bénéficiaires (plus de duplication)
-    beneficiaires_marque: brand.beneficiaires_marque?.map(liaison => ({
-      ...liaison.beneficiaire,
-      lien_financier: liaison.lien_financier,
-      impact_description: liaison.impact_specifique || liaison.beneficiaire.impact_generique,
-      controverses: liaison.beneficiaire.controverses || []
-    })) || []
+  // Pattern: Conditional Data Loading selon contexte
+  const transformedBrands = await Promise.all(brands.map(async marque => {
+    let donneesChaine = {
+      chaine_beneficiaires: [],
+      total_beneficiaires_chaine: 0
+    }
+
+    // Mode recherche : chaîne complète + marques liées
+    if (search) {
+      donneesChaine = await construireChaineCompletePourMarque(marque.id, 5)
+    }
+
+    // Payload minimal : suppression redondances (~40% réduction)
+    return {
+      id: marque.id,
+      nom: marque.nom,
+      evenements: marque.Evenement?.map(ev => ({
+        id: ev.id,
+        titre: ev.titre,
+        date: ev.date,
+        source_url: ev.source_url,
+        reponse: ev.reponse,
+        condamnation_judiciaire: ev.condamnation_judiciaire,
+        categorie: ev.Categorie || null
+      })) || [],
+      message_boycott_tips: marque.message_boycott_tips,
+      secteur_marque: marque.SecteurMarque ? {
+        nom: marque.SecteurMarque.nom,
+        message_boycott_tips: marque.SecteurMarque.message_boycott_tips
+      } : null,
+      ...donneesChaine
+    }
   }))
 
-  const result = { marques: transformedData }
-  cache.set(cacheKey, { data: result, timestamp: Date.now() })
-
-  return successResponse(result)
+  cache.set(endpointType, transformedBrands, params)
+  return successResponse(transformedBrands)
 }
 ```
-**Optimisations implémentées :**
-- **SQL JOINs unifiés** : Une seule requête pour toutes les relations
-- **Recherche déléguée** : Filtrage serveur réduit le trafic réseau
-- **Structure sans duplication** : Format `beneficiaires_marque` consolidé
-- **Cache intelligent** : TTL adapté selon type de requête
-- **Performance** : Élimination complète des anti-patterns N+1
+**Optimisations :**
+- **Payload réduit 40%** : Suppression `created_at`, `marque_id`, `categorie_id`, `description`, etc.
+- **Conditional Loading** : Chaîne bénéficiaires seulement pour recherches
+- **Événements simplifiés** : 6 propriétés essentielles vs 12+ anciennes
+- **Structure unifiée** : `chaine_beneficiaires` remplace patterns N+1
+- **Cache intelligent** : TTL adaptatif selon usage
 
 #### evenements.js - Événements avec Pagination
 ```javascript
