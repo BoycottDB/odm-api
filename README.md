@@ -79,7 +79,7 @@ Health check et diagnostics du service
 ```json
 {
   "status": "OK",
-  "timestamp": "2024-01-15T10:30:00.000Z",
+  "timestamp": "2025-01-15T10:30:00.000Z",
   "service": "Extension API - Netlify",
   "version": "1.0.0",
   "environment": "production"
@@ -92,8 +92,8 @@ Health check et diagnostics du service
 Métadonnées de version pour synchronisation intelligente
 ```json
 {
-  "version": "2024-01-15T10:30:00.000Z",
-  "lastUpdated": "2024-01-15T10:30:00.000Z", 
+  "version": "2025-01-15T10:30:00.000Z",
+  "lastUpdated": "2025-01-15T10:30:00.000Z", 
   "totalBrands": 42,
   "totalEvents": 156,
   "checksum": "42-156-1705316200000"
@@ -180,7 +180,7 @@ GET /evenements?limit=100&offset=0
     "id": 1,
     "marque_id": 1,
     "titre": "Controverse travail des enfants",
-    "date": "2024-01-15",
+    "date": "2025-01-15",
     "source_url": "https://...",
     "condamnation_judiciaire": false,
     "marque": { ... },
@@ -230,8 +230,8 @@ GET /secteurs-marque?id=456  # Spécifique
     "nom": "Mode & Textile",
     "description": "...",
     "message_boycott_tips": "Privilégiez la seconde main...",
-    "created_at": "2024-01-15T10:30:00.000Z",
-    "updated_at": "2024-01-15T10:30:00.000Z"
+    "created_at": "2025-01-15T10:30:00.000Z",
+    "updated_at": "2025-01-15T10:30:00.000Z"
   }
 ]
 ```
@@ -258,8 +258,8 @@ GET /api/beneficiaires/chaine?marqueId=79&profondeur=5  # Maybelline avec 5 nive
             "titre": "Tests sur les animaux malgré l'interdiction européenne",
             "source_url": "https://example.com/source",
             "ordre": 1,
-            "created_at": "2024-01-15T10:30:00.000Z",
-            "updated_at": "2024-01-15T10:30:00.000Z"
+            "created_at": "2025-01-15T10:30:00.000Z",
+            "updated_at": "2025-01-15T10:30:00.000Z"
           }
         ],
         "impact_generique": "Vos achats financent ce groupe controversé...",
@@ -372,15 +372,9 @@ Ce module contient la logique centralisée pour calculer les marques transitives
 - `marques.js` : Calcul des bénéficiaires transitifs avec leurs marques
 - `beneficiaires-chaine.js` : Enrichissement des chaînes avec les marques liées
 
-## 📊 Structure des Données V2 - Dirigeants Normalisés
+## 📊 Structure des Données - Dirigeants Normalisés
 
-### Évolution Architecturale
-Cette API supporte désormais une architecture de base de données normalisée pour les bénéficiaires controversés :
-
-- **V1 (Legacy)** : Données dirigeant dupliquées pour chaque marque
-- **V2 (Actuel)** : Bénéficiaires centralisés + relations transitives + sections marques séparées
-
-### ✨ Nouvelles Propriétés - Sections Marques
+### Sections Marques
 
 Chaque bénéficiaire dispose maintenant de sections séparées pour ses marques liées :
 
@@ -409,79 +403,12 @@ Marques des bénéficiaires qui profitent au bénéficiaire via relations transi
 - Recherche "Herta" → BlackRock transitif avec marques indirectes de Nestlé  
 - Interface utilisateur : badges berry (directes) vs bleus (indirectes)
 
-### Avantages V2
-- ✅ **Réutilisabilité** : Un dirigeant peut être lié à plusieurs marques
-- ✅ **Performance** : Moins de duplication de données
-- ✅ **Sections marques** : Distinction directes vs indirectes
-- ✅ **Relations transitives** : Support des bénéficiaires en cascade
+### Fonctionnalités
+- **Réutilisabilité** : Un dirigeant peut être lié à plusieurs marques
+- **Performance** : Données centralisées sans duplication
+- **Sections marques** : Distinction directes vs indirectes
+- **Relations transitives** : Support des bénéficiaires en cascade
 
-### ⚠️ Dette Technique - Compatibilité Legacy
-
-**Problème :** L'extension browser utilise encore l'ancien format `dirigeant_controverse`
-
-**Impact actuel :**
-```json
-{
-  "dirigeant_controverse": {
-    "controverses": "Titre 1 | Titre 2",  // ❌ String concaténée (legacy)
-    "sources": ["url1", "url2"]            // ❌ Array simple (legacy)
-  },
-  "beneficiaires_marque": [{
-    "beneficiaire": {
-      "controverses": [{                   
-        "titre": "Titre 1",
-        "source_url": "url1"
-      }],
-      "marques_directes": [...],           
-      "marques_indirectes": {...}
-    }
-  }]
-}
-```
-
-**Plan d'élimination :**
-1. **Extension browser** → Migrer vers `beneficiaires_marque`  
-2. **API** → Supprimer génération `dirigeant_controverse`
-3. **Types** → Supprimer `MarqueDirigeantLegacy`
-
-**Bénéfices attendus :** Code 30% plus simple, un seul format partout
-- ✅ **Maintenance** : Mise à jour centralisée des informations dirigeant
-- ✅ **Rétrocompatibilité** : Extensions existantes continuent de fonctionner
-
-### Transformation Automatique
-L'API transforme automatiquement les données normalisées V2 au format attendu par les extensions :
-```javascript
-// Base de données V2 (normalisée)
-{
-  marque_dirigeant: [{
-    id: 45,
-    dirigeant_id: 12,
-    lien_financier: "Co-fondateur...",
-    impact_specifique: "100% des achats...",
-    dirigeant: {
-      nom: "Jean Dupont",
-      controverses: "Description...",
-      sources: ["url1", "url2"],
-      impact_generique: "Impact générique..."
-    }
-  }]
-}
-
-// ↓ Transformation API ↓
-
-// Format extension (rétrocompatible)
-{
-  dirigeants_controverses: [{
-    id: 45,                    // ID liaison
-    dirigeant_id: 12,          // ID dirigeant centralisé
-    dirigeant_nom: "Jean Dupont",
-    controverses: "Description...",
-    sources: ["url1", "url2"],
-    lien_financier: "Co-fondateur...",
-    impact_description: "100% des achats..." // impact_specifique || impact_generique
-  }]
-}
-```
 
 ### `GET /api/brands/updates?since=<ISO_DATE>`
 Récupérer les mises à jour depuis une date
@@ -490,7 +417,7 @@ Récupérer les mises à jour depuis une date
   "hasUpdates": true,
   "updatedBrands": [...],
   "updatedEvents": [...],
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "timestamp": "2025-01-15T10:30:00.000Z"
 }
 ```
 
@@ -522,8 +449,8 @@ Récupérer toutes les données (fallback)
       ]
     }
   ],
-  "version": "2024-01-15T10:30:00.000Z",
-  "lastUpdated": "2024-01-15T10:30:00.000Z",
+  "version": "2025-01-15T10:30:00.000Z",
+  "lastUpdated": "2025-01-15T10:30:00.000Z",
   "totalBrands": 42,
   "checksum": "42-156-1705316200000"
 }

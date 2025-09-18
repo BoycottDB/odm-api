@@ -28,6 +28,248 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 // Utilisation du cache unifié
 // TTL adapté automatiquement : 10min (recherche) ou 20min (liste complète)
 
+// Algorithme récursif pour construire la chaîne de bénéficiaires
+async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedIds, profondeurMax = 5, lienFinancierParent = '') {
+  // Éviter les cycles infinis et limiter la profondeur
+  if (niveauActuel >= profondeurMax || visitedIds.has(beneficiaireId)) {
+    return [];
+  }
+
+  // Marquer ce bénéficiaire comme visité
+  visitedIds.add(beneficiaireId);
+
+  try {
+    // Récupérer le bénéficiaire actuel
+    const { data: beneficiaire, error: beneficiaireError } = await supabase
+      .from('Beneficiaires')
+      .select(`
+        id,
+        nom,
+        impact_generique,
+        type_beneficiaire,
+        created_at,
+        updated_at,
+        controverses:controverse_beneficiaire(*,Categorie!controverse_beneficiaire_categorie_id_fkey(*))
+      `)
+      .eq('id', beneficiaireId)
+      .single();
+
+    if (beneficiaireError || !beneficiaire) {
+      visitedIds.delete(beneficiaireId);
+      return [];
+    }
+
+    // Récupérer les relations suivantes
+    const { data: relations } = await supabase
+      .from('beneficiaire_relation')
+      .select(`
+        id,
+        beneficiaire_source_id,
+        beneficiaire_cible_id,
+        description_relation,
+        created_at,
+        updated_at
+      `)
+      .eq('beneficiaire_source_id', beneficiaireId);
+
+    const relationsSuivantes = (relations || []).map(rel => ({
+      id: rel.id,
+      beneficiaire_source_id: rel.beneficiaire_source_id,
+      beneficiaire_cible_id: rel.beneficiaire_cible_id,
+      type_relation: 'actionnaire', // Valeur par défaut
+      description_relation: rel.description_relation,
+      created_at: rel.created_at,
+      updated_at: rel.updated_at
+    }));
+
+    // Créer le nœud actuel
+    const nodeActuel = {
+      beneficiaire: {
+        id: beneficiaire.id,
+        nom: beneficiaire.nom,
+        controverses: beneficiaire.controverses || [],
+        impact_generique: beneficiaire.impact_generique,
+        type_beneficiaire: beneficiaire.type_beneficiaire,
+        created_at: beneficiaire.created_at,
+        updated_at: beneficiaire.updated_at
+      },
+      niveau: niveauActuel,
+      relations_suivantes: relationsSuivantes,
+      lien_financier: lienFinancierParent || 'Lien financier non défini',
+      marques_directes: [],
+      marques_indirectes: {}
+    };
+
+    // Résultat de la chaîne commençant par ce nœud
+    const resultat = [nodeActuel];
+
+    // Récursivement construire les chaînes suivantes
+    for (const relation of relationsSuivantes) {
+      if (relation.beneficiaire_cible_id && !visitedIds.has(relation.beneficiaire_cible_id)) {
+        const chainesSuivantes = await construireChaineRecursive(
+          relation.beneficiaire_cible_id,
+          niveauActuel + 1,
+          new Set(visitedIds), // Nouvelle copie pour chaque branche
+          profondeurMax,
+          relation.description_relation || 'Participation financière'
+        );
+        resultat.push(...chainesSuivantes);
+      }
+    }
+
+    visitedIds.delete(beneficiaireId);
+    return resultat;
+  } catch (error) {
+    console.error(`Erreur lors de la construction de la chaîne pour bénéficiaire ${beneficiaireId}:`, error);
+    visitedIds.delete(beneficiaireId);
+    return [];
+  }
+}
+
+// Fonction pour enrichir la chaîne avec les marques liées
+async function enrichirAvecMarquesLiees(chaineNodes, marqueId) {
+  try {
+    // Créer un map des bénéficiaires avec leurs marques liées
+    const beneficiairesEnrichis = new Map();
+
+    // Traiter chaque bénéficiaire de la chaîne
+    for (const node of chaineNodes) {
+      const beneficiaireId = node.beneficiaire.id;
+
+      // Récupérer toutes les marques pour ce bénéficiaire
+      const { data: toutesMarquesDuBeneficiaire, error: marquesError } = await supabase
+        .from('Marque_beneficiaire')
+        .select(`
+          Marque!marque_id (id, nom)
+        `)
+        .eq('beneficiaire_id', beneficiaireId);
+
+      if (marquesError) {
+        console.error(`Erreur récupération marques pour bénéficiaire ${beneficiaireId}:`, marquesError);
+        continue;
+      }
+
+      const toutesMarques = toutesMarquesDuBeneficiaire?.map(m => ({
+        id: m.Marque.id,
+        nom: m.Marque.nom
+      })) || [];
+
+      // Calculer les marques directes (exclure la marque actuelle de recherche)
+      const marques_directes = toutesMarques.filter(m => m.id !== marqueId);
+
+      // Utiliser la fonction récursive partagée
+      const marquesTransitives = await recupererToutesMarquesTransitives(
+        supabase,
+        beneficiaireId,
+        marqueId,
+        new Set(),
+        5
+      );
+
+      const marques_indirectes = marquesTransitives.marquesIndirectes;
+
+      beneficiairesEnrichis.set(beneficiaireId, {
+        marques_directes,
+        marques_indirectes
+      });
+    }
+
+    // Enrichir chaque node de la chaîne avec les marques liées
+    return chaineNodes.map(node => {
+      const enrichissement = beneficiairesEnrichis.get(node.beneficiaire.id);
+      if (enrichissement) {
+        return {
+          ...node,
+          marques_directes: enrichissement.marques_directes,
+          marques_indirectes: enrichissement.marques_indirectes
+        };
+      }
+      // Fallback avec tableaux vides
+      return {
+        ...node,
+        marques_directes: [],
+        marques_indirectes: {}
+      };
+    });
+
+  } catch (error) {
+    console.error('Erreur lors de l\'enrichissement avec les marques liées:', error);
+    return chaineNodes.map(node => ({
+      ...node,
+      marques_directes: [],
+      marques_indirectes: {}
+    }));
+  }
+}
+
+// Fonction pour construire la chaîne complète de bénéficiaires pour une marque
+async function construireChaineCompletePourMarque(marqueId, profondeurMax = 5) {
+  try {
+    // Récupérer les bénéficiaires directs de cette marque
+    const { data: liaisonsBeneficiaires, error: liaisonsError } = await supabase
+      .from('Marque_beneficiaire')
+      .select(`
+        beneficiaire_id,
+        lien_financier,
+        impact_specifique
+      `)
+      .eq('marque_id', parseInt(marqueId));
+
+    if (liaisonsError || !liaisonsBeneficiaires || liaisonsBeneficiaires.length === 0) {
+      return {
+        chaine_beneficiaires: [],
+        total_beneficiaires_chaine: 0,
+        profondeur_max_chaine: 0
+      };
+    }
+
+    // Construire les chaînes complètes
+    const chaineFusionnee = [];
+
+    for (const liaison of liaisonsBeneficiaires) {
+      if (!liaison.beneficiaire_id) continue;
+
+      const chaine = await construireChaineRecursive(
+        liaison.beneficiaire_id,
+        0, // Niveau 0 pour le bénéficiaire direct
+        new Set(),
+        profondeurMax,
+        liaison.lien_financier || 'Lien financier direct'
+      );
+
+      chaineFusionnee.push(...chaine);
+    }
+
+    // Supprimer les doublons par ID de bénéficiaire
+    const chaineUnique = chaineFusionnee.filter((node, index, array) =>
+      array.findIndex(n => n.beneficiaire.id === node.beneficiaire.id) === index
+    );
+
+    // Trier par niveau puis par nom
+    chaineUnique.sort((a, b) => {
+      if (a.niveau !== b.niveau) return a.niveau - b.niveau;
+      return a.beneficiaire.nom.localeCompare(b.beneficiaire.nom);
+    });
+
+    // Enrichir avec les marques liées
+    const chaineEnrichie = await enrichirAvecMarquesLiees(chaineUnique, marqueId);
+
+    return {
+      chaine_beneficiaires: chaineEnrichie,
+      total_beneficiaires_chaine: chaineEnrichie.length,
+      profondeur_max_chaine: chaineEnrichie.length > 0 ? Math.max(...chaineEnrichie.map(node => node.niveau)) : 0
+    };
+
+  } catch (error) {
+    console.error('Erreur lors de la construction de la chaîne complète:', error);
+    return {
+      chaine_beneficiaires: [],
+      total_beneficiaires_chaine: 0,
+      profondeur_max_chaine: 0
+    };
+  }
+}
+
 const marquesHandler = async (event) => {
   const startTime = Date.now();
   const functionName = 'marques';
@@ -152,110 +394,94 @@ const marquesHandler = async (event) => {
 
     if (error) throw error;
 
-    // ransformation simplifiée utilisant les données des JOINs
+    // Transformation simplifiée utilisant les données des JOINs
     const transformedBrands = await Promise.all(
       (marques || []).map(async (marque) => {
         const liaisonsDirectes = marque.Marque_beneficiaire || [];
 
-        // Transformation unifiée des bénéficiaires directs
-        const beneficiaires_marque = [];
+        // Construire les données selon le type de requête
+        let donneesChaine = {
+          chaine_beneficiaires: [],
+          total_beneficiaires_chaine: 0,
+          profondeur_max_chaine: 0
+        };
+        let beneficiaires_marque = [];
 
-        for (const liaison of liaisonsDirectes) {
-          if (liaison.Beneficiaires) {
-            // Utiliser les données déjà récupérées par les JOINs
-            const controverses = liaison.Beneficiaires.controverse_beneficiaire || [];
-            const autres_marques_raw = liaison.Beneficiaires.autres_marques || [];
+        if (search) {
+          // Pour les recherches : utiliser la nouvelle logique de chaîne complète
+          donneesChaine = await construireChaineCompletePourMarque(marque.id, 5);
+        } else {
+          // Pour les listes : utiliser l'ancienne logique simplifiée (compatible avec l'extension)
+          for (const liaison of liaisonsDirectes) {
+            if (liaison.Beneficiaires) {
+              // Utiliser les données déjà récupérées par les JOINs
+              const controverses = liaison.Beneficiaires.controverse_beneficiaire || [];
+              const autres_marques_raw = liaison.Beneficiaires.autres_marques || [];
 
-            // Calculer les marques directes (exclure la marque actuelle)
-            const marques_directes = autres_marques_raw
-              .map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
-              .filter(m => m.id !== marque.id);
+              // Calculer les marques directes (exclure la marque actuelle)
+              const marques_directes = autres_marques_raw
+                .map(m => ({ id: m.Marque.id, nom: m.Marque.nom }))
+                .filter(m => m.id !== marque.id);
 
-            // Calculer les marques transitives (gardé pour compatibilité complexe)
-            const marquesTransitives = await recupererToutesMarquesTransitives(
-              supabase,
-              liaison.Beneficiaires.id,
-              marque.id,
-              new Set(),
-              5
-            );
+              // Calculer les marques transitives (gardé pour compatibilité complexe)
+              const marquesTransitives = await recupererToutesMarquesTransitives(
+                supabase,
+                liaison.Beneficiaires.id,
+                marque.id,
+                new Set(),
+                5
+              );
 
-            const marques_indirectes = marquesTransitives.marquesIndirectes;
+              const marques_indirectes = marquesTransitives.marquesIndirectes;
 
-            // Nettoyer les données bénéficiaire pour éviter duplication
-            const { controverse_beneficiaire, autres_marques, ...beneficiaireClean } = liaison.Beneficiaires;
+              // Nettoyer les données bénéficiaire pour éviter duplication
+              const { controverse_beneficiaire, autres_marques, ...beneficiaireClean } = liaison.Beneficiaires;
 
-            beneficiaires_marque.push({
-              id: liaison.id,
-              lien_financier: liaison.lien_financier,
-              impact_specifique: liaison.impact_specifique,
-              source_lien: 'direct',
-              beneficiaire: {
-                ...beneficiaireClean,
-                controverses: controverses, 
-                marques_directes: marques_directes,
-                marques_indirectes: marques_indirectes
-              }
-            });
+              beneficiaires_marque.push({
+                id: liaison.id,
+                lien_financier: liaison.lien_financier,
+                impact_specifique: liaison.impact_specifique,
+                beneficiaire: {
+                  ...beneficiaireClean,
+                  controverses: controverses,
+                  marques_directes: marques_directes,
+                  marques_indirectes: marques_indirectes
+                }
+              });
+            }
           }
         }
 
-        // Traitement des événements et catégories
+        // Traitement des événements
         const evenements = marque.Evenement || [];
-        const categoriesUniques = new Map();
-        
-        // Extraire les catégories uniques des événements
-        evenements.forEach(event => {
-          if (event.Categorie && !categoriesUniques.has(event.Categorie.id)) {
-            categoriesUniques.set(event.Categorie.id, event.Categorie);
-          }
-        });
-        
-        const categories = Array.from(categoriesUniques.values())
-          .sort((a, b) => a.ordre - b.ordre);
-        
-        // Calculer les statistiques
-        const nbControverses = evenements.length;
-        const nbCondamnations = evenements.filter(e => e.condamnation_judiciaire === true).length;
-        const nbDirigeantsControverses = beneficiaires_marque.length;
         
         // Nettoyer les données pour éviter duplication
         const { SecteurMarque, Marque_beneficiaire, Evenement, ...marqueClean } = marque;
 
-        // Unifier la forme des événements retournés (alignée sur /.netlify/functions/evenements)
-        const marqueEmbed = {
-          id: marqueClean.id,
-          nom: marqueClean.nom,
-          secteur_marque_id: marqueClean.secteur_marque_id,
-          message_boycott_tips: marqueClean.message_boycott_tips,
-          secteur_marque: SecteurMarque || null
-        };
+        // Simplifier les événements (supprimer redondances)
         const evenementsTransformed = evenements.map(ev => ({
           id: ev.id,
-          marque_id: ev.marque_id ?? marqueClean.id,
           titre: ev.titre ?? ev.description,
-          description: ev.description,
           date: ev.date,
-          categorie_id: ev.Categorie ? ev.Categorie.id : null,
           source_url: ev.source_url,
           reponse: ev.reponse,
           condamnation_judiciaire: ev.condamnation_judiciaire === true,
-          marque: marqueEmbed,
           categorie: ev.Categorie || null
         }));
 
         return {
-          ...marqueClean,
-          // Événements et catégories
+          id: marqueClean.id,
+          nom: marqueClean.nom,
+          // Événements simplifiés
           evenements: evenementsTransformed,
-          categories,
-          // Statistiques
-          nbControverses,
-          nbCondamnations,
-          nbDirigeantsControverses,
-          // Structure unifiée sans duplication
-          beneficiaires_marque, // Format unifié
-          secteur_marque: SecteurMarque || null
+          // Secteur (seulement si nécessaire pour BoycottTips)
+          message_boycott_tips: marqueClean.message_boycott_tips,
+          secteur_marque: SecteurMarque ? {
+            nom: SecteurMarque.nom,
+            message_boycott_tips: SecteurMarque.message_boycott_tips
+          } : null,
+          // Données de chaîne (seulement pour recherche)
+          ...donneesChaine
         };
       })
     );
