@@ -380,6 +380,8 @@ const marquesHandler = async (event) => {
           updated_at
         )
       `)
+      // Order embedded events by their event date (newest first)
+      .order('date', { ascending: false, referencedTable: 'Evenement' })
       .order('nom');
 
     // Apply search filter if provided
