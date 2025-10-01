@@ -2,6 +2,7 @@
  * Netlify Function - Brand statistics for public /marques page
  */
 import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -17,7 +18,9 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 
 // Cache
 const cache = new Map();
-const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const MAX_CATEGORIES = 7;
+const MAX_BENEFICIAIRES = 5;
 
 // Fonction pour récupérer les bénéficiaires controversés sur plusieurs niveaux
 async function getBeneficiairesControverses(supabase, marqueId) {
@@ -133,20 +136,37 @@ export const handler = async (event) => {
   }
 
   try {
+    const ifNoneMatch = (event.headers && (event.headers['if-none-match'] || event.headers['If-None-Match'])) || undefined;
     // Check cache
     const cacheKey = 'marques_stats';
     const now = Date.now();
     const cached = cache.get(cacheKey);
     
     if (cached && (now - cached.timestamp) < CACHE_TTL) {
+      if (ifNoneMatch && cached.etag && ifNoneMatch === cached.etag) {
+        return {
+          statusCode: 304,
+          headers: {
+            ...headers,
+            'ETag': cached.etag,
+            'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=60',
+            'X-Data-Source': 'odm-api-cache',
+            'X-Cache': 'HIT'
+          },
+          body: ''
+        };
+      }
       console.log('Cache hit for brand stats');
       return {
         statusCode: 200,
         headers: {
           ...headers,
-          'X-Data-Source': 'odm-api-cache'
+          'ETag': cached.etag,
+          'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=60',
+          'X-Data-Source': 'odm-api-cache',
+          'X-Cache': 'HIT'
         },
-        body: JSON.stringify(cached.data)
+        body: cached.bodyStr || JSON.stringify(cached.data)
       };
     }
 
@@ -206,13 +226,14 @@ export const handler = async (event) => {
           categoriesMap.set(cat.id, cat);
         }
       });
-      const categories = Array.from(categoriesMap.values());
+      const categories = Array.from(categoriesMap.values()).slice(0, MAX_CATEGORIES);
       
       // Nombre de condamnations judiciaires
       const nbCondamnations = evenements.filter((e) => e.condamnation_judiciaire === true).length;
       
       // Bénéficiaires controversés (multi-niveaux)
       const beneficiairesData = await getBeneficiairesControverses(supabase, marque.id);
+      const beneficiairesLimited = (beneficiairesData.beneficiaires || []).slice(0, MAX_BENEFICIAIRES);
       
       return {
         id: marque.id,
@@ -221,32 +242,47 @@ export const handler = async (event) => {
         categories,
         nbCondamnations,
         nbBeneficiairesControverses: beneficiairesData.count,
-        beneficiairesControverses: beneficiairesData.beneficiaires
+        beneficiairesControverses: beneficiairesLimited
       };
     }));
 
-    // Trier par nombre de controverses décroissant, puis par nom
-    marquesWithStats.sort((a, b) => {
-      if (b.nbControverses !== a.nbControverses) {
-        return b.nbControverses - a.nbControverses;
-      }
-      return a.nom.localeCompare(b.nom, 'fr');
-    });
+    // Tri alphabétique côté API pour éviter un tri duplicatif côté front
+    marquesWithStats.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
 
-    // Cache the result
+    // Préparer ETag et mise en cache
+    const bodyStr = JSON.stringify(marquesWithStats);
+    const etag = createHash('sha1').update(bodyStr).digest('hex');
     cache.set(cacheKey, {
       data: marquesWithStats,
-      timestamp: now
+      timestamp: now,
+      etag,
+      bodyStr
     });
 
     console.log(`Brand stats loaded: ${marquesWithStats.length} brands`);
+    if (ifNoneMatch && etag && ifNoneMatch === etag) {
+      return {
+        statusCode: 304,
+        headers: {
+          ...headers,
+          'ETag': etag,
+          'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=60',
+          'X-Data-Source': 'odm-api-fresh',
+          'X-Cache': 'MISS'
+        },
+        body: ''
+      };
+    }
     return {
       statusCode: 200,
       headers: {
         ...headers,
-        'X-Data-Source': 'odm-api-fresh'
+        'ETag': etag,
+        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=60',
+        'X-Data-Source': 'odm-api-fresh',
+        'X-Cache': 'MISS'
       },
-      body: JSON.stringify(marquesWithStats)
+      body: bodyStr
     };
 
   } catch (error) {

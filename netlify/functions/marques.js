@@ -6,6 +6,7 @@ import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js
 import { MetricsLogger } from './utils/metrics.js';
 import { initSentry, sentryHandler } from './utils/sentry.js';
 import { createServerlessCache } from './utils/serverlessCache.js';
+import { createHash } from 'node:crypto';
 
 // Initialiser Sentry
 initSentry();
@@ -294,6 +295,7 @@ const marquesHandler = async (event) => {
 
   try {
     const { search, limit = '999', offset = '0' } = event.queryStringParameters || {};
+    const ifNoneMatch = (event.headers && (event.headers['if-none-match'] || event.headers['If-None-Match'])) || undefined;
     
     // Déterminer le type de cache selon la requête
     const endpointType = search ? 'marques_search' : 'marques_all';
@@ -301,6 +303,24 @@ const marquesHandler = async (event) => {
     const cached = cache.get(endpointType, params);
 
     if (cached) {
+      const bodyStr = JSON.stringify(cached);
+      const etag = createHash('sha1').update(bodyStr).digest('hex');
+      const maxAge = endpointType === 'marques_search' ? 600 : 1200; // 10min vs 20min
+      if (ifNoneMatch && etag && ifNoneMatch === etag) {
+        MetricsLogger.logCache(functionName, true);
+        return {
+          statusCode: 304,
+          headers: {
+            ...headers,
+            'X-Data-Source': 'odm-api-marques-cache-unified',
+            'X-Cache': 'HIT',
+            'X-Cache-Type': endpointType,
+            'Cache-Control': `public, s-maxage=${maxAge}, stale-while-revalidate=60`,
+            'ETag': etag
+          },
+          body: ''
+        };
+      }
       MetricsLogger.logCache(functionName, true);
       return {
         statusCode: 200,
@@ -308,9 +328,11 @@ const marquesHandler = async (event) => {
           ...headers,
           'X-Data-Source': 'odm-api-marques-cache-unified',
           'X-Cache': 'HIT',
-          'X-Cache-Type': endpointType
+          'X-Cache-Type': endpointType,
+          'Cache-Control': `public, s-maxage=${maxAge}, stale-while-revalidate=60`,
+          'ETag': etag
         },
-        body: JSON.stringify(cached)
+        body: bodyStr
       };
     }
 
@@ -494,6 +516,24 @@ const marquesHandler = async (event) => {
     MetricsLogger.logCache(functionName, false);
 
     console.log(`Brands loaded: ${transformedBrands.length} brands (search: ${search || 'none'})`);
+    const bodyStr = JSON.stringify(transformedBrands);
+    const etag = createHash('sha1').update(bodyStr).digest('hex');
+    const maxAge = endpointType === 'marques_search' ? 600 : 1200; // 10min vs 20min
+    if (ifNoneMatch && etag && ifNoneMatch === etag) {
+      return {
+        statusCode: 304,
+        headers: {
+          ...headers,
+          'X-Data-Source': 'odm-api-marques-fresh-unified',
+          'X-Cache': 'MISS',
+          'X-Cache-Type': endpointType,
+          'X-Cache-Metrics': JSON.stringify(cache.getMetrics()),
+          'Cache-Control': `public, s-maxage=${maxAge}, stale-while-revalidate=60`,
+          'ETag': etag
+        },
+        body: ''
+      };
+    }
     return {
       statusCode: 200,
       headers: {
@@ -501,9 +541,11 @@ const marquesHandler = async (event) => {
         'X-Data-Source': 'odm-api-marques-fresh-unified',
         'X-Cache': 'MISS',
         'X-Cache-Type': endpointType,
-        'X-Cache-Metrics': JSON.stringify(cache.getMetrics())
+        'X-Cache-Metrics': JSON.stringify(cache.getMetrics()),
+        'Cache-Control': `public, s-maxage=${maxAge}, stale-while-revalidate=60`,
+        'ETag': etag
       },
-      body: JSON.stringify(transformedBrands)
+      body: bodyStr
     };
 
   } catch (error) {
