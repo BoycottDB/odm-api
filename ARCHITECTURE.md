@@ -550,6 +550,7 @@ const SERVERLESS_TTL = {
   suggestions: 5 * 60 * 1000,        // 5min - auto-complétion ultra-rapide
   marques_search: 10 * 60 * 1000,    // 10min - recherche avec chaîne complète
   marques_all: 20 * 60 * 1000,       // 20min - liste simple sans chaîne
+  marques_stats: 10 * 60 * 1000,     // 10min - stats /marques (alphabétique, top catégories/bénéficiaires)
 
   // Extension Browser (format legacy maintenu)
   version: 5 * 60 * 1000,            // 5min - contrôle version
@@ -708,6 +709,10 @@ Cache-Control: public, s-maxage=300, stale-while-revalidate=3600
 - 5 minutes cache fresh
 - 1 hour stale acceptable
 - Background revalidation
+
+Notes spécifiques par endpoint (override côté fonction):
+- `/.netlify/functions/marques-stats` → `Cache-Control: public, s-maxage=600, stale-while-revalidate=60` + `ETag` (support 304)
+- `/.netlify/functions/marques` → `s-maxage=600` en mode recherche et `s-maxage=1200` en liste complète + `ETag` (support 304)
 
 ### Niveau 3 : Extension Local Cache
 - Extensions cachent localement
