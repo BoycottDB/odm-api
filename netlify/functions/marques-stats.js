@@ -180,6 +180,11 @@ export const handler = async (event) => {
       .select(`
         id,
         nom,
+        secteur_marque_id,
+        secteur_marque:SecteurMarque!Marque_secteur_marque_id_fkey (
+          id,
+          nom
+        ),
         Evenement (
           id,
           categorie_id,
@@ -238,6 +243,10 @@ export const handler = async (event) => {
       return {
         id: marque.id,
         nom: marque.nom,
+        secteur: marque.secteur_marque ? {
+          id: marque.secteur_marque.id,
+          nom: marque.secteur_marque.nom
+        } : null,
         nbControverses,
         categories,
         nbCondamnations,
