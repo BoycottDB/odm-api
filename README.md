@@ -142,10 +142,15 @@ GET /marques?search=nike&limit=50&offset=0
 ```
 **Cache :** 20 minutes | **Performance :** SQL JOINs unifiés, structure optimisée
 
+**Utilisation Application Web :**
+- **Page `/marques`** : Filtrage côté client sur données complètes (secteur, bénéficiaire, tri)
+- **SearchHero** : Récupère suggestions via `/suggestions`, puis navigue vers `/marques/${slug}` ou `/marques?search=query`
+- **État "Pas de résultats"** : Géré côté client dans `MarquesListClient` (pas d'endpoint spécifique)
+
 Sémantique de recherche:
-- Paramètre `search` = match exact (case-insensitive) sur `nom` (ILIKE sans wildcards).
-- Les `evenements` retournés sous chaque marque sont normalisés pour le frontend: ils incluent l'objet `marque` (id, nom, secteur, message_boycott_tips, secteur_marque) et l'objet `categorie` (id, nom, emoji, couleur, ordre) pour alimenter directement l'UI (`EventList`/`EventCard`).
-- La SearchBar de l'application web effectue uniquement une recherche de marque via cet endpoint; aucune recherche par mots-clés (titre/catégorie) n'est réalisée.
+- Paramètre `search` = match exact (case-insensitive) sur `nom` (ILIKE sans wildcards)
+- Les `evenements` incluent les objets `marque` et `categorie` normalisés pour l'UI
+- Aucune recherche full-text sur titre/catégorie d'événement
 
 #### `GET /suggestions`
 Auto-complétion ultra-rapide pour recherche en temps réel
@@ -166,8 +171,13 @@ GET /suggestions?q=nike&limit=10
 ```
 **Cache :** 5 minutes | **Performance :** Structure minimale (id + nom), sub-100ms
 
+**Utilisation Application Web :**
+- **SearchHero** : Affichage dropdown suggestions en temps réel (debouncing 200ms)
+- **AbortController** : Gestion race conditions côté client (annulation requêtes obsolètes)
+- **Navigation** : Sélection suggestion → redirect `/marques/${slug}` avec scroll automatique
+
 Sémantique:
-- Préfixe uniquement (startsWith), insensible à la casse (ILIKE avec wildcard de fin seulement : `q%`).
+- Préfixe uniquement (startsWith), insensible à la casse (ILIKE avec wildcard de fin seulement : `q%`)
 
 #### `GET /evenements`
 Événements avec pagination et données complètes
@@ -191,8 +201,8 @@ GET /evenements?limit=100&offset=0
 **Cache :** 15 minutes | **Optimisé pour :** Timeline publique
 
 Usage:
-- Utilisé pour la timeline par défaut (chargement initial sans requête).
-- Non utilisé par la SearchBar (qui recherche des marques uniquement via `/marques`).
+- Utilisé pour la timeline publique (chargement initial)
+- Non utilisé par SearchHero (qui utilise `/suggestions` + navigation vers `/marques`)
 
 #### `GET /categories`
 Catégories d'événements actives
