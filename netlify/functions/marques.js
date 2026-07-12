@@ -498,6 +498,8 @@ const marquesHandler = async (event) => {
           nom: marqueClean.nom,
           // Événements simplifiés
           evenements: evenementsTransformed,
+          // Bénéficiaires directs (liste complète, utilisée par l'extension)
+          beneficiaires_marque,
           // Secteur (seulement si nécessaire pour BoycottTips)
           message_boycott_tips: marqueClean.message_boycott_tips,
           secteur_marque: SecteurMarque ? {
