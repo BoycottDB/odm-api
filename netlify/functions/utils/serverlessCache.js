@@ -3,23 +3,11 @@
  * Cache optimisé pour l'architecture Netlify Functions (processus isolés)
  */
 
-// Configuration TTL unifiée et optimisée
+// Durées de vie du cache en mémoire, par type de requête
 const UNIFIED_TTL = {
-  // Endpoints optimisés (Solutions 1, 2, 3)
-  suggestions: 5 * 60 * 1000,        // 5 minutes - auto-complétion ultra-rapide
-  marques_search: 10 * 60 * 1000,    // 10 minutes - recherche déléguée
-  marques_all: 20 * 60 * 1000,       // 20 minutes - liste complète avec SQL JOINs
-
-  // Endpoints existants optimisés
-  version: 5 * 60 * 1000,            // 5 minutes - frequently accessed
-  health: 2 * 60 * 1000,             // 2 minutes - monitoring rapide
-  updates: 10 * 60 * 1000,           // 10 minutes - moderate frequency
-  full: 30 * 60 * 1000,              // 30 minutes - heavy payload
-  beneficiaires_chaine: 15 * 60 * 1000,  // 15 minutes - chaîne avec marques optimisée
-  evenements: 15 * 60 * 1000,        // 15 minutes - événements avec pagination
-  categories: 60 * 60 * 1000,         // 1 heure - catégories quasi-statiques
-  secteurs: 60 * 60 * 1000,          // 1 heure - secteurs marques stables
-  marques_stats: 30 * 60 * 1000      // 30 minutes - statistiques calculées
+  suggestions: 5 * 60 * 1000,        // 5 minutes - auto-complétion
+  marques_search: 10 * 60 * 1000,    // 10 minutes - recherche
+  marques_all: 20 * 60 * 1000        // 20 minutes - liste complète (TTL par défaut)
 };
 
 class ServerlessCache {
@@ -42,10 +30,6 @@ class ServerlessCache {
     const sizeConfig = {
       suggestions: 200,        // Beaucoup de queries différentes
       marques: 100,           // Searches + all
-      beneficiaires_chaine: 50, // Moins de variété mais plus gros
-      evenements: 30,         // Relativement stable
-      categories: 10,         // Très stable
-      secteurs: 10,           // Très stable
       default: 50
     };
 

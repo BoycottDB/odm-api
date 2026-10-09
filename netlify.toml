@@ -39,11 +39,6 @@
   to = "/.netlify/functions/secteurs-marque"
   status = 200
 
-[[redirects]]
-  from = "/api/beneficiaires/chaine"
-  to = "/.netlify/functions/beneficiaires-chaine"
-  status = 200
-
 # Fallbacks et monitoring
 [[redirects]]
   from = "/api/stats"

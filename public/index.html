@@ -3,74 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extension API - Répertoire des Marques à Boycotter</title>
+    <title>odm-api - Qui j'enrichis ?</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #db2777 0%, #9d174d 100%); color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .container { text-align: center; max-width: 600px; padding: 2rem; }
-        h1 { font-size: 3rem; margin-bottom: 1rem; font-weight: 300; }
-        .subtitle { font-size: 1.2rem; opacity: 0.9; margin-bottom: 2rem; }
-        .endpoints { background: rgba(255,255,255,0.1); border-radius: 12px; padding: 2rem; margin: 2rem 0; }
-        .endpoint { margin: 1rem 0; }
-        .endpoint a { color: #fce7f3; text-decoration: none; font-family: monospace; }
-        .endpoint a:hover { text-decoration: underline; }
-        .description { font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem; }
-        .footer { margin-top: 2rem; font-size: 0.9rem; opacity: 0.7; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 4rem auto; padding: 0 1rem; line-height: 1.6; color: #1f2937; background: #ffffff; }
+        a { color: #be185d; }
+        code { background: #f3f4f6; padding: 0.1rem 0.3rem; border-radius: 4px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Extension API</h1>
-        <div class="subtitle">Répertoire Collaboratif des Marques à Boycotter</div>
-        
-        <div class="endpoints">
-            <h3>🔗 Endpoints disponibles</h3>
-            
-            <h4 style="margin: 1.5rem 0 1rem; color: #fce7f3; font-size: 1.1rem;">Application web & Extensions navigateur</h4>
-            
-            <div class="endpoint">
-                <a href="/health" target="_blank">/health</a>
-                <div class="description">Vérification de l'état de l'API</div>
-            </div>
-            
-            <div class="endpoint">
-                <a href="/api/marques" target="_blank">/api/marques</a>
-                <div class="description">Liste des marques avec statistiques</div>
-            </div>
-            
-            <div class="endpoint">
-                <a href="/api/evenements" target="_blank">/api/evenements</a>
-                <div class="description">Événements et controverses</div>
-            </div>
-            
-            <div class="endpoint">
-                <a href="/api/categories" target="_blank">/api/categories</a>
-                <div class="description">Catégories d'événements</div>
-            </div>
-            
-            <div class="endpoint">
-                <a href="/api/secteurs-marque" target="_blank">/api/secteurs-marque</a>
-                <div class="description">Secteurs de marques pour Boycott Tips</div>
-            </div>
-            
-            <div class="endpoint">
-                <a href="/api/beneficiaires/chaine?marqueId=79&profondeur=3" target="_blank">/api/beneficiaires/chaine?marqueId=ID&profondeur=N</a>
-                <div class="description">Chaîne financière récursive avec marques liées</div>
-            </div>
-        </div>
-        
-        <div class="footer">
-            ⚡ Powered by Netlify Functions<br>
-            🌱 Hébergement éthique et durable
-        </div>
-    </div>
-
-    <script>
-        // Test de connexion au chargement
-        fetch('/health')
-            .then(res => res.json())
-            .then(data => console.log('✅ API Status:', data))
-            .catch(err => console.error('❌ API Error:', err));
-    </script>
+    <h1>odm-api</h1>
+    <p>API en lecture seule de <strong>Qui j'enrichis ?</strong></p>
+    <p>État : <a href="/health"><code>/health</code></a></p>
+    <p>Liste des points d'accès et code source : <a href="https://github.com/BoycottDB/odm-api">github.com/BoycottDB/odm-api</a></p>
 </body>
 </html>

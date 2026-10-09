@@ -1,6 +1,6 @@
 /**
  * Module utilitaire pour calculer les marques transitives des bénéficiaires
- * Utilisé par marques.js et beneficiaires-chaine.js
+ * Utilisé par marques.js
  * 
  * Résout le bug : BlackRock doit voir les marques de L'Oréal via Nestlé
  */
