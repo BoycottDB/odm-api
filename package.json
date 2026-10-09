@@ -19,7 +19,7 @@
     "observatory"
   ],
   "author": "ODM - Observatoire des Marques",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "dependencies": {
     "@sentry/node": "^10.11.0",
     "@sentry/serverless": "^7.120.4",
