@@ -3,6 +3,7 @@
  * Returns complete brand data with events, beneficiary chain, and boycott tips
  */
 import { createClient } from '@supabase/supabase-js';
+import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
 import { createServerlessCache } from './utils/serverlessCache.js';
 import { initSentry, sentryHandler } from './utils/sentry.js';
 
@@ -38,9 +39,10 @@ function slugify(text) {
 }
 
 /**
- * Construire la chaîne de bénéficiaires récursivement
+ * Construire la chaîne de bénéficiaires récursivement (chaque bénéficiaire une seule fois ;
+ * les liens entre bénéficiaires sont dans relations_suivantes)
  */
-async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedIds, profondeurMax = 5, lienFinancierParent = '') {
+async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedIds, marqueId, profondeurMax = 5, lienFinancierParent = '') {
   if (niveauActuel >= profondeurMax || visitedIds.has(beneficiaireId)) {
     return [];
   }
@@ -78,12 +80,12 @@ async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedId
       description_relation: rel.description_relation
     }));
 
-    const { data: marquesDirectes } = await supabase
-      .from('Marque_beneficiaire')
-      .select('marque:Marque!inner(id, nom)')
-      .eq('beneficiaire_id', beneficiaireId);
-
-    const marques_directes = (marquesDirectes || []).map(m => m.marque);
+    // Autres marques du bénéficiaire (hors marque affichée), directes et via les bénéficiaires qui lui sont liés
+    const { marquesDirectes, marquesIndirectes } = await recupererToutesMarquesTransitives(
+      supabase,
+      beneficiaireId,
+      marqueId
+    );
 
     const nodeActuel = {
       beneficiaire: {
@@ -96,8 +98,8 @@ async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedId
       niveau: niveauActuel,
       relations_suivantes: relationsSuivantes,
       lien_financier: lienFinancierParent || 'Lien financier non défini',
-      marques_directes: marques_directes,
-      marques_indirectes: {}
+      marques_directes: marquesDirectes,
+      marques_indirectes: marquesIndirectes
     };
 
     const noeuds = [nodeActuel];
@@ -107,6 +109,7 @@ async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedId
         relation.beneficiaire_cible_id,
         niveauActuel + 1,
         visitedIds,
+        marqueId,
         profondeurMax,
         relation.description_relation || 'Lien financier'
       );
@@ -231,6 +234,7 @@ const handler = sentryHandler(async (event) => {
           liaison.beneficiaire_id,
           0,
           visitedIds,
+          marque.id,
           5,
           liaison.lien_financier
         );
