@@ -19,8 +19,44 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 // Cache
 const cache = new Map();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
-const MAX_CATEGORIES = 7;
 const MAX_BENEFICIAIRES = 5;
+
+// Catégorie jamais affichée en étiquette : elle ne dit rien au visiteur
+const CATEGORIE_EXCLUE = 'Autre';
+
+// Une étiquette par catégorie, avec le nombre de controverses ;
+// ordre : catégorie dont la controverse est la plus récente en premier
+// (même calcul que calculerEtiquettes sur la page de marque du site) ;
+// controverses de la marque (Evenement) ou de bénéficiaires (controverse_beneficiaire)
+function calculerEtiquettes(controverses) {
+  const parCategorie = new Map();
+
+  for (const controverse of controverses) {
+    const categorie = Array.isArray(controverse.Categorie) ? controverse.Categorie[0] : controverse.Categorie;
+    const nom = categorie?.nom;
+    if (!nom || nom === CATEGORIE_EXCLUE) continue;
+
+    const date = controverse.date ? new Date(controverse.date).getTime() : 0;
+    const existante = parCategorie.get(nom);
+    parCategorie.set(nom, {
+      emoji: categorie.emoji,
+      nombre: (existante?.nombre ?? 0) + 1,
+      plusRecente: Math.max(existante?.plusRecente ?? 0, date),
+    });
+  }
+
+  return [...parCategorie.entries()]
+    .sort(([, a], [, b]) => b.plusRecente - a.plusRecente)
+    .map(([nom, { emoji, nombre }]) => ({ nom, emoji, nombre }));
+}
+
+// D'où viennent les étiquettes affichées : 'marque', 'beneficiaires', 'marque_ou_beneficiaires' ou null
+function origineDesEtiquettes(depuisMarque, depuisBeneficiaires) {
+  if (depuisMarque && depuisBeneficiaires) return 'marque_ou_beneficiaires';
+  if (depuisMarque) return 'marque';
+  if (depuisBeneficiaires) return 'beneficiaires';
+  return null;
+}
 
 // Fonction pour récupérer les bénéficiaires controversés sur plusieurs niveaux
 async function getBeneficiairesControverses(supabase, marqueId) {
@@ -32,7 +68,7 @@ async function getBeneficiairesControverses(supabase, marqueId) {
       .eq('marque_id', marqueId);
 
     if (!liaisonsBeneficiaires || liaisonsBeneficiaires.length === 0) {
-      return { count: 0, beneficiaires: [] };
+      return { count: 0, beneficiaires: [], controverses: [] };
     }
 
     // 2. Pour chaque bénéficiaire direct, construire sa chaîne et collecter les controversés
@@ -53,11 +89,13 @@ async function getBeneficiairesControverses(supabase, marqueId) {
       });
     }
     
-    const beneficiaires = Array.from(beneficiairesControversesMap.values());
-    return { count: beneficiaires.length, beneficiaires };
+    // Map par id : un bénéficiaire atteint par plusieurs chemins n'est compté qu'une fois
+    const controverses = Array.from(beneficiairesControversesMap.values()).flatMap((b) => b.controverses);
+    const beneficiaires = Array.from(beneficiairesControversesMap.values()).map(({ id, nom }) => ({ id, nom }));
+    return { count: beneficiaires.length, beneficiaires, controverses };
   } catch (error) {
     console.error(`Erreur lors de la récupération des bénéficiaires controversés pour la marque ${marqueId}:`, error);
-    return { count: 0, beneficiaires: [] };
+    return { count: 0, beneficiaires: [], controverses: [] };
   }
 }
 
@@ -72,13 +110,12 @@ async function getBeneficiairesControversesRecursif(supabase, beneficiaireId, vi
   
   visited.add(beneficiaireId);
   
-  // Vérifier si ce bénéficiaire a des controverses et récupérer son nom
+  // Controverses de ce bénéficiaire, avec catégorie et date pour les étiquettes
   const { data: controverses } = await supabase
     .from('controverse_beneficiaire')
-    .select('id')
-    .eq('beneficiaire_id', beneficiaireId)
-    .limit(1);
-    
+    .select('id, date, Categorie!controverse_beneficiaire_categorie_id_fkey (nom, emoji)')
+    .eq('beneficiaire_id', beneficiaireId);
+
   if (controverses && controverses.length > 0) {
     // Récupérer le nom du bénéficiaire
     const { data: beneficiaire } = await supabase
@@ -88,7 +125,7 @@ async function getBeneficiairesControversesRecursif(supabase, beneficiaireId, vi
       .single();
       
     if (beneficiaire) {
-      result.add({ id: beneficiaire.id, nom: beneficiaire.nom });
+      result.add({ id: beneficiaire.id, nom: beneficiaire.nom, controverses });
     }
   }
   
@@ -187,12 +224,10 @@ export const handler = async (event) => {
         ),
         Evenement (
           id,
-          categorie_id,
+          date,
           Categorie!Evenement_categorie_id_fkey (
-            id,
             nom,
-            emoji,
-            couleur
+            emoji
           )
         ),
         Marque_beneficiaire!marque_id (
@@ -211,30 +246,18 @@ export const handler = async (event) => {
 
     // Calculer les statistiques pour chaque marque
     const marquesWithStats = await Promise.all((marques || []).map(async (marque) => {
-      const evenements = marque.Evenement || [];
-      
-      // Nombre total de controverses
-      const nbControverses = evenements.length;
-      
-      // Catégories uniques (filtrer les null et undefined)
-      const categoriesMap = new Map();
-      evenements.forEach((e) => {
-        const categorie = e.Categorie;
-        let cat = null;
-        if (Array.isArray(categorie) && categorie.length > 0) {
-          cat = categorie[0];
-        } else if (categorie && 'nom' in categorie) {
-          cat = categorie;
-        }
-        if (cat && cat.id) {
-          categoriesMap.set(cat.id, cat);
-        }
-      });
-      const categories = Array.from(categoriesMap.values()).slice(0, MAX_CATEGORIES);
-      
       // Bénéficiaires controversés (multi-niveaux)
       const beneficiairesData = await getBeneficiairesControverses(supabase, marque.id);
       const beneficiairesLimited = (beneficiairesData.beneficiaires || []).slice(0, MAX_BENEFICIAIRES);
+
+      // Étiquettes de la marque et de ses bénéficiaires, fusionnées ; l'origine sert
+      // au libellé du site, pour ne pas attribuer à la marque les controverses de ses bénéficiaires
+      const evenements = marque.Evenement || [];
+      const etiquettes = calculerEtiquettes([...evenements, ...beneficiairesData.controverses]);
+      const origineEtiquettes = origineDesEtiquettes(
+        calculerEtiquettes(evenements).length > 0,
+        calculerEtiquettes(beneficiairesData.controverses).length > 0
+      );
       
       return {
         id: marque.id,
@@ -243,8 +266,8 @@ export const handler = async (event) => {
           id: marque.secteur_marque.id,
           nom: marque.secteur_marque.nom
         } : null,
-        nbControverses,
-        categories,
+        etiquettes,
+        origineEtiquettes,
         nbBeneficiairesControverses: beneficiairesData.count,
         beneficiairesControverses: beneficiairesLimited
       };
