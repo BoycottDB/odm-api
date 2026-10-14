@@ -3,6 +3,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
+import { toutesLesLignes } from './utils/toutesLesLignes.js';
 
 // Configuration Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -59,30 +60,12 @@ function origineDesEtiquettes(depuisMarque, depuisBeneficiaires) {
 }
 
 const PROFONDEUR_MAX = 5;
-const TAILLE_PAGE = 1000; // limite de lignes par requête Supabase
-
-// Toutes les lignes d'une table, page par page ; une erreur arrête tout,
-// pour ne jamais servir ni mettre en cache des données incomplètes
-async function toutesLesLignes(table, colonnes) {
-  const lignes = [];
-  for (let debut = 0; ; debut += TAILLE_PAGE) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(colonnes)
-      .order('id')
-      .range(debut, debut + TAILLE_PAGE - 1);
-    if (error) throw error;
-    lignes.push(...data);
-    if (data.length < TAILLE_PAGE) return lignes;
-  }
-}
-
 // Bénéficiaires, liens de la chaîne et controverses, chargés une fois pour toutes les marques
 async function chargerChaines() {
   const [beneficiaires, relations, controverses] = await Promise.all([
-    toutesLesLignes('Beneficiaires', 'id, nom'),
-    toutesLesLignes('beneficiaire_relation', 'id, beneficiaire_source_id, beneficiaire_cible_id'),
-    toutesLesLignes('controverse_beneficiaire', 'id, beneficiaire_id, date, Categorie!controverse_beneficiaire_categorie_id_fkey (nom, emoji)'),
+    toutesLesLignes(supabase, 'Beneficiaires', 'id, nom'),
+    toutesLesLignes(supabase, 'beneficiaire_relation', 'id, beneficiaire_source_id, beneficiaire_cible_id'),
+    toutesLesLignes(supabase, 'controverse_beneficiaire', 'id, beneficiaire_id, date, Categorie!controverse_beneficiaire_categorie_id_fkey (nom, emoji)'),
   ]);
 
   const nomParId = new Map(beneficiaires.map((b) => [b.id, b.nom]));
@@ -196,7 +179,7 @@ export const handler = async (event) => {
 
     // Marques avec leurs controverses et leurs bénéficiaires directs
     const [marques, chaines] = await Promise.all([
-      toutesLesLignes('Marque', `
+      toutesLesLignes(supabase, 'Marque', `
         id,
         nom,
         secteur_marque:SecteurMarque!Marque_secteur_marque_id_fkey (
