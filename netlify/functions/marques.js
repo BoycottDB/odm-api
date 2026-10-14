@@ -211,8 +211,7 @@ async function construireChaineCompletePourMarque(marqueId, profondeurMax = 5) {
       .from('Marque_beneficiaire')
       .select(`
         beneficiaire_id,
-        lien_financier,
-        impact_specifique
+        lien_financier
       `)
       .eq('marque_id', parseInt(marqueId));
 
@@ -363,7 +362,6 @@ const marquesHandler = async (event) => {
           id,
           beneficiaire_id,
           lien_financier,
-          impact_specifique,
           created_at,
           updated_at,
           Beneficiaires!marque_beneficiaire_beneficiaire_id_fkey (
@@ -463,7 +461,6 @@ const marquesHandler = async (event) => {
               beneficiaires_marque.push({
                 id: liaison.id,
                 lien_financier: liaison.lien_financier,
-                impact_specifique: liaison.impact_specifique,
                 beneficiaire: {
                   ...beneficiaireClean,
                   controverses: controverses,
