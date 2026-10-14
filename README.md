@@ -32,13 +32,13 @@ On les appelle par `https://odm-api.netlify.app/.netlify/functions/<nom>`. Certa
 | `marque-by-slug` | `slug` (requis) | Une marque complète : controverses, chaîne de bénéficiaires, conseils | page `/marques/[slug]` |
 | `marques-slugs` | — | Liste des slugs, pour la génération statique | site |
 | `marques-stats` | — | Statistiques de la page `/marques` | site |
-| `suggestions` | `q`, `limit` | `id` + `nom` seulement, pour l'autocomplétion | barre de recherche |
+| `marques-noms` | — | `id` + `nom` de toutes les marques, filtrés dans le navigateur | barre de recherche |
 | `evenements` | `limit`, `offset` | Controverses, les plus récentes d'abord | site |
 | `categories` | — | Catégories de controverses | site |
 | `secteurs-marque` | `id` (facultatif) | Secteurs d'activité | site |
 | `health` | — | État de l'API et de la connexion Supabase | admin |
 
-Cache CDN de 10 à 20 minutes sur `marques`, `marque-by-slug`, `marques-slugs` et `marques-stats`. Les autres fonctions n'ont que le cache en mémoire, de 5 minutes à 1 heure selon la fonction (`UNIFIED_TTL` dans [serverlessCache.js](netlify/functions/utils/serverlessCache.js), ou constante `CACHE_TTL` en tête de fichier).
+Cache CDN de 10 à 20 minutes sur `marques`, `marque-by-slug`, `marques-slugs`, `marques-stats` et `marques-noms`. Les autres fonctions n'ont que le cache en mémoire, de 5 minutes à 1 heure selon la fonction (`UNIFIED_TTL` dans [serverlessCache.js](netlify/functions/utils/serverlessCache.js), ou constante `CACHE_TTL` en tête de fichier).
 
 ## Développement
 

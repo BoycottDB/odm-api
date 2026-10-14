@@ -50,7 +50,7 @@ async function construireChaineRecursive(beneficiaireId, niveauActuel, visitedId
         type_beneficiaire,
         created_at,
         updated_at,
-        controverses:controverse_beneficiaire(*,Categorie!controverse_beneficiaire_categorie_id_fkey(*))
+        controverses:controverse_beneficiaire(id, beneficiaire_id, titre, date, source_url, source_archive_url, reponse, categorie_id, created_at, updated_at,Categorie!controverse_beneficiaire_categorie_id_fkey(*))
       `)
       .eq('id', beneficiaireId)
       .single();
@@ -351,7 +351,6 @@ const marquesHandler = async (event) => {
           date,
           source_url,
           reponse,
-          condamnation_judiciaire,
           Categorie!categorie_id (
             id,
             nom,
@@ -489,7 +488,6 @@ const marquesHandler = async (event) => {
           date: ev.date,
           source_url: ev.source_url,
           reponse: ev.reponse,
-          condamnation_judiciaire: ev.condamnation_judiciaire === true,
           categorie: ev.Categorie || null
         }));
 

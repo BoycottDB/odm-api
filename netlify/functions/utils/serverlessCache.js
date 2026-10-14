@@ -5,7 +5,6 @@
 
 // Durées de vie du cache en mémoire, par type de requête
 const UNIFIED_TTL = {
-  suggestions: 5 * 60 * 1000,        // 5 minutes - auto-complétion
   marques_search: 10 * 60 * 1000,    // 10 minutes - recherche
   marques_all: 20 * 60 * 1000        // 20 minutes - liste complète (TTL par défaut)
 };
@@ -28,7 +27,6 @@ class ServerlessCache {
    */
   getMaxSizeForFunction(functionName) {
     const sizeConfig = {
-      suggestions: 200,        // Beaucoup de queries différentes
       marques: 100,           // Searches + all
       default: 50
     };

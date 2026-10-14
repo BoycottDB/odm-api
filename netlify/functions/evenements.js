@@ -102,7 +102,6 @@ export const handler = async (event) => {
       categorie_id: evt.categorie_id,
       source_url: evt.source_url || evt.source,
       reponse: evt.reponse,
-      condamnation_judiciaire: evt.condamnation_judiciaire || false,
       created_at: evt.created_at,
       updated_at: evt.updated_at,
       marque: evt.Marque ? {
