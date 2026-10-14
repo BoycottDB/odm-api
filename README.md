@@ -33,7 +33,6 @@ On les appelle par `https://odm-api.netlify.app/.netlify/functions/<nom>`. Certa
 | `marques-slugs` | — | Liste des slugs, pour la génération statique | site |
 | `marques-stats` | — | Statistiques de la page `/marques` | site |
 | `marques-noms` | — | `id` + `nom` de toutes les marques, filtrés dans le navigateur | barre de recherche |
-| `suggestions` | `q`, `limit` | `id` + `nom` seulement, pour l'autocomplétion | barre de recherche |
 | `evenements` | `limit`, `offset` | Controverses, les plus récentes d'abord | site |
 | `categories` | — | Catégories de controverses | site |
 | `secteurs-marque` | `id` (facultatif) | Secteurs d'activité | site |
