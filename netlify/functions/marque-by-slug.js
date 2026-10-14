@@ -207,7 +207,6 @@ const handler = sentryHandler(async (event) => {
           date,
           source_url,
           reponse,
-          condamnation_judiciaire,
           categorie:Categorie(*)
         )
       `)

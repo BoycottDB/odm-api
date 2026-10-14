@@ -188,7 +188,6 @@ export const handler = async (event) => {
         Evenement (
           id,
           categorie_id,
-          condamnation_judiciaire,
           Categorie!Evenement_categorie_id_fkey (
             id,
             nom,
@@ -233,9 +232,6 @@ export const handler = async (event) => {
       });
       const categories = Array.from(categoriesMap.values()).slice(0, MAX_CATEGORIES);
       
-      // Nombre de condamnations judiciaires
-      const nbCondamnations = evenements.filter((e) => e.condamnation_judiciaire === true).length;
-      
       // Bénéficiaires controversés (multi-niveaux)
       const beneficiairesData = await getBeneficiairesControverses(supabase, marque.id);
       const beneficiairesLimited = (beneficiairesData.beneficiaires || []).slice(0, MAX_BENEFICIAIRES);
@@ -249,7 +245,6 @@ export const handler = async (event) => {
         } : null,
         nbControverses,
         categories,
-        nbCondamnations,
         nbBeneficiairesControverses: beneficiairesData.count,
         beneficiairesControverses: beneficiairesLimited
       };

@@ -351,7 +351,6 @@ const marquesHandler = async (event) => {
           date,
           source_url,
           reponse,
-          condamnation_judiciaire,
           Categorie!categorie_id (
             id,
             nom,
@@ -489,7 +488,6 @@ const marquesHandler = async (event) => {
           date: ev.date,
           source_url: ev.source_url,
           reponse: ev.reponse,
-          condamnation_judiciaire: ev.condamnation_judiciaire === true,
           categorie: ev.Categorie || null
         }));
 
