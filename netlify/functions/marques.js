@@ -3,7 +3,6 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { recupererToutesMarquesTransitives } from './utils/marquesTransitives.js';
-import { MetricsLogger } from './utils/metrics.js';
 import { initSentry, sentryHandler } from './utils/sentry.js';
 import { createServerlessCache } from './utils/serverlessCache.js';
 import { createHash } from 'node:crypto';
@@ -271,8 +270,6 @@ async function construireChaineCompletePourMarque(marqueId, profondeurMax = 5) {
 }
 
 const marquesHandler = async (event) => {
-  const startTime = Date.now();
-  const functionName = 'marques';
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -306,7 +303,6 @@ const marquesHandler = async (event) => {
       const etag = createHash('sha1').update(bodyStr).digest('hex');
       const maxAge = endpointType === 'marques_search' ? 600 : 1200; // 10min vs 20min
       if (ifNoneMatch && etag && ifNoneMatch === etag) {
-        MetricsLogger.logCache(functionName, true);
         return {
           statusCode: 304,
           headers: {
@@ -320,7 +316,6 @@ const marquesHandler = async (event) => {
           body: ''
         };
       }
-      MetricsLogger.logCache(functionName, true);
       return {
         statusCode: 200,
         headers: {
@@ -510,8 +505,6 @@ const marquesHandler = async (event) => {
     // Cache unifié avec TTL automatique
     cache.set(endpointType, transformedBrands, params);
 
-    MetricsLogger.logCache(functionName, false);
-
     console.log(`Brands loaded: ${transformedBrands.length} brands (search: ${search || 'none'})`);
     const bodyStr = JSON.stringify(transformedBrands);
     const etag = createHash('sha1').update(bodyStr).digest('hex');
@@ -524,7 +517,6 @@ const marquesHandler = async (event) => {
           'X-Data-Source': 'odm-api-marques-fresh-unified',
           'X-Cache': 'MISS',
           'X-Cache-Type': endpointType,
-          'X-Cache-Metrics': JSON.stringify(cache.getMetrics()),
           'Cache-Control': `public, s-maxage=${maxAge}, stale-while-revalidate=60`,
           'ETag': etag
         },
@@ -538,7 +530,6 @@ const marquesHandler = async (event) => {
         'X-Data-Source': 'odm-api-marques-fresh-unified',
         'X-Cache': 'MISS',
         'X-Cache-Type': endpointType,
-        'X-Cache-Metrics': JSON.stringify(cache.getMetrics()),
         'Cache-Control': `public, s-maxage=${maxAge}, stale-while-revalidate=60`,
         'ETag': etag
       },
@@ -546,7 +537,6 @@ const marquesHandler = async (event) => {
     };
 
   } catch (error) {
-    MetricsLogger.logError(functionName, error);
     console.error('Brands endpoint error:', error);
     return {
       statusCode: 500,
