@@ -42,7 +42,8 @@ const healthHandler = async (event) => {
       process.env.SUPABASE_URL, 
       process.env.SUPABASE_ANON_KEY
     );
-    await supabase.from('Marque').select('id').limit(1);
+    const { error } = await supabase.from('Marque').select('id').limit(1);
+    if (error) throw error;
     dbResponseTime = Date.now() - start;
     supabaseStatus = 'connected';
   } catch (error) {

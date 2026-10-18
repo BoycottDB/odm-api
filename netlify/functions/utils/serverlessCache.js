@@ -13,8 +13,6 @@ class ServerlessCache {
   constructor(functionName) {
     this.functionName = functionName;
     this.cache = new Map();
-    this.hitCount = 0;
-    this.missCount = 0;
     this.lastCleanup = Date.now();
     this.cleanupInterval = 10 * 60 * 1000; // Nettoyage toutes les 10 minutes
 
@@ -54,7 +52,6 @@ class ServerlessCache {
     const cached = this.cache.get(key);
 
     if (!cached) {
-      this.missCount++;
       return null;
     }
 
@@ -63,11 +60,9 @@ class ServerlessCache {
 
     if (isExpired) {
       this.cache.delete(key);
-      this.missCount++;
       return null;
     }
 
-    this.hitCount++;
     return cached.data;
   }
 
@@ -86,8 +81,7 @@ class ServerlessCache {
       data,
       timestamp: Date.now(),
       endpoint,
-      params,
-      accessCount: 1
+      params
     });
 
     // Nettoyage périodique pour éviter la croissance illimitée
@@ -101,7 +95,7 @@ class ServerlessCache {
     const now = Date.now();
     const entries = Array.from(this.cache.entries());
 
-    // Trier par : expirées d'abord, puis par fréquence d'accès
+    // Trier : expirées d'abord
     entries.sort((a, b) => {
       const [keyA, valueA] = a;
       const [keyB, valueB] = b;
@@ -112,15 +106,12 @@ class ServerlessCache {
       const expiredA = now - valueA.timestamp > ttlA;
       const expiredB = now - valueB.timestamp > ttlB;
 
-      // Prioriser les entrées expirées
       if (expiredA && !expiredB) return -1;
       if (!expiredA && expiredB) return 1;
-
-      // Ensuite, trier par fréquence d'accès (moins utilisées d'abord)
-      return (valueA.accessCount || 1) - (valueB.accessCount || 1);
+      return 0;
     });
 
-    // Supprimer la moitié des entrées les moins importantes
+    // Supprimer la moitié des entrées, en commençant par les expirées
     const toDelete = Math.floor(this.maxSize / 2);
     let deletedCount = 0;
 
@@ -157,50 +148,6 @@ class ServerlessCache {
 
     if (deletedCount > 0) {
       console.log(`[${this.functionName}] Periodic cleanup: removed ${deletedCount} expired entries`);
-    }
-  }
-
-  /**
-   * Métriques de performance du cache pour cette fonction
-   */
-  getMetrics() {
-    const totalRequests = this.hitCount + this.missCount;
-    const hitRate = totalRequests > 0 ? (this.hitCount / totalRequests) * 100 : 0;
-
-    return {
-      functionName: this.functionName,
-      hitCount: this.hitCount,
-      missCount: this.missCount,
-      hitRate: Math.round(hitRate * 100) / 100,
-      cacheSize: this.cache.size,
-      maxSize: this.maxSize,
-      lastCleanup: new Date(this.lastCleanup).toISOString(),
-      utilizationRate: Math.round((this.cache.size / this.maxSize) * 100)
-    };
-  }
-
-  /**
-   * Warmup cache avec données fréquemment utilisées (optionnel)
-   */
-  async warmup(supabase, endpoint) {
-    if (endpoint === 'categories') {
-      try {
-        console.log(`[${this.functionName}] Starting cache warmup for categories...`);
-
-        const { data: categories } = await supabase
-          .from('Categorie')
-          .select('*')
-          .eq('actif', true)
-          .order('ordre');
-
-        if (categories) {
-          this.set('categories', categories);
-        }
-
-        console.log(`[${this.functionName}] Cache warmup completed`);
-      } catch (error) {
-        console.warn(`[${this.functionName}] Warmup failed:`, error.message);
-      }
     }
   }
 }
