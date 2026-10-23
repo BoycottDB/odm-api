@@ -1,5 +1,6 @@
 /**
  * Netlify Function - Events data
+ * Controverses des marques (Evenement) et des bénéficiaires (controverse_beneficiaire), triées par date
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -63,37 +64,51 @@ export const handler = async (event) => {
       throw new Error('Supabase not configured');
     }
 
-    // Get events with all related data
-    const { data: evenements, error } = await supabase
-      .from('Evenement')
-      .select(`
-        *,
-        Marque!Evenement_marque_id_fkey (
-          id,
-          nom,
-          secteur_marque_id,
-          message_boycott_tips,
-          SecteurMarque!secteur_marque_id (
+    // Les N plus récentes de chaque table suffisent pour trouver les N plus récentes de la fusion
+    const debut = parseInt(offset);
+    const fin = debut + parseInt(limit);
+    const [evenementsMarque, controversesBeneficiaire] = await Promise.all([
+      supabase
+        .from('Evenement')
+        .select(`
+          *,
+          Marque!Evenement_marque_id_fkey (
             id,
             nom,
-            message_boycott_tips
+            secteur_marque_id,
+            message_boycott_tips,
+            SecteurMarque!secteur_marque_id (
+              id,
+              nom,
+              message_boycott_tips
+            )
+          ),
+          Categorie!Evenement_categorie_id_fkey (
+            id,
+            nom,
+            emoji,
+            couleur,
+            ordre
           )
-        ),
-        Categorie!Evenement_categorie_id_fkey (
-          id,
-          nom,
-          emoji,
-          couleur,
-          ordre
-        )
-      `)
-      .order('date', { ascending: false })
-      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+        `)
+        .order('date', { ascending: false, nullsFirst: false })
+        .range(0, fin - 1),
+      supabase
+        .from('controverse_beneficiaire')
+        .select(`
+          id, beneficiaire_id, titre, date, source_url, reponse, categorie_id, created_at, updated_at,
+          Beneficiaires!controverse_beneficiaire_beneficiaire_id_fkey (id, nom),
+          Categorie!controverse_beneficiaire_categorie_id_fkey (id, nom, emoji, couleur, ordre)
+        `)
+        .order('date', { ascending: false, nullsFirst: false })
+        .range(0, fin - 1)
+    ]);
 
-    if (error) throw error;
+    if (evenementsMarque.error) throw evenementsMarque.error;
+    if (controversesBeneficiaire.error) throw controversesBeneficiaire.error;
 
     // Transform for frontend compatibility
-    const transformedEvents = evenements?.map(evt => ({
+    const evenementsTransformes = (evenementsMarque.data || []).map(evt => ({
       id: evt.id,
       marque_id: evt.marque_id,
       titre: evt.titre || evt.description,
@@ -112,7 +127,25 @@ export const handler = async (event) => {
         secteur_marque: evt.Marque.SecteurMarque
       } : null,
       categorie: evt.Categorie
-    })) || [];
+    }));
+
+    const controversesTransformees = (controversesBeneficiaire.data || []).map(ctv => ({
+      id: ctv.id,
+      titre: ctv.titre,
+      date: ctv.date,
+      categorie_id: ctv.categorie_id,
+      source_url: ctv.source_url,
+      reponse: ctv.reponse,
+      created_at: ctv.created_at,
+      updated_at: ctv.updated_at,
+      beneficiaire: ctv.Beneficiaires,
+      categorie: ctv.Categorie
+    }));
+
+    // Tri par date de la controverse, sans date en dernier
+    const transformedEvents = [...evenementsTransformes, ...controversesTransformees]
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(debut, fin);
 
     // Cache the result
     cache.set(cacheKey, {
