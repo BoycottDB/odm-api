@@ -87,7 +87,7 @@ function grapheRecent() {
 }
 
 /**
- * Autres marques d'un bénéficiaire (hors marque affichée) : directes, et via les bénéficiaires
+ * Autres marques d'un bénéficiaire (hors marque affichée) : directes et via les bénéficiaires
  * qui lui sont liés (relations entrantes), regroupées par intermédiaire
  */
 function marquesTransitives(graphe, beneficiaireId, marqueActuelleId, visites = new Set()) {

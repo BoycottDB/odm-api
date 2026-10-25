@@ -18,7 +18,7 @@ odm-web (Next.js, via DataService)  ·  odm-extension (service worker)
 
 - **Une fonction par point d'accès**, dans `netlify/functions/`.
 - **Clé anon uniquement** : l'API ne peut que lire. Les politiques RLS de Supabase n'autorisent que `SELECT` sur les tables publiques.
-- **Deux niveaux de cache** : un cache en mémoire, perdu quand Netlify recycle la fonction, et le CDN, qui sert les réponses sans réveiller la fonction.
+- **Deux niveaux de cache** : un cache en mémoire, perdu quand Netlify recycle la fonction ; le CDN, lui, sert les réponses sans réveiller la fonction.
 - **Chaîne de bénéficiaires** : `utils/marquesTransitives.js` remonte récursivement les relations entre bénéficiaires (par exemple, voir les marques de L'Oréal depuis BlackRock via Nestlé), avec une protection contre les cycles.
 - **Erreurs** : suivies avec Sentry (`utils/sentry.js`).
 

@@ -1,6 +1,8 @@
 [build]
   functions = "netlify/functions"
   publish = "public"
+  # Pas de déploiement (15 crédits) si seuls des .md changent
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)*.md'"
   
 [functions]
   node_bundler = "esbuild"
