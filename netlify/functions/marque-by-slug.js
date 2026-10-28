@@ -222,14 +222,14 @@ const handler = sentryHandler(async (event) => {
       };
     }
 
-    // Récupérer toutes les marques et leurs autres noms pour matcher le slug
+    // Récupérer toutes les marques et leurs autres noms (produits et variantes) pour matcher le slug
     const [marques, autresNoms] = await Promise.all([
       toutesLesLignes(supabase, 'Marque', 'id, nom'),
-      toutesLesLignes(supabase, 'marque_autre_nom', 'marque_id, nom'),
+      toutesLesLignes(supabase, 'marque_autre_nom', 'marque_id, nom, type'),
     ]);
 
     // Trouver la marque correspondant au slug, sinon celle dont un autre nom y correspond
-    // (le site affiche alors la page de la marque, vue depuis cet autre nom)
+    // (le site affiche alors la page de la marque titrée du produit ou, pour une variante, redirige vers la marque)
     const autreNom = autresNoms.find(a => slugify(a.nom) === slug);
     const marque = marques.find(m => slugify(m.nom) === slug)
       ?? (autreNom && marques.find(m => m.id === autreNom.marque_id));
@@ -300,7 +300,8 @@ const handler = sentryHandler(async (event) => {
 
     const result = {
       ...marqueComplete,
-      autres_noms: autresNoms.filter(a => a.marque_id === marque.id).map(a => a.nom),
+      autres_noms: autresNoms.filter(a => a.marque_id === marque.id && a.type === 'produit').map(a => a.nom),
+      variantes: autresNoms.filter(a => a.marque_id === marque.id && a.type === 'variante').map(a => a.nom),
       chaine_beneficiaires,
       total_beneficiaires_chaine,
       total_evenements: marqueComplete.evenements?.length || 0
