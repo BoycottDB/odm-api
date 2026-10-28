@@ -29,10 +29,10 @@ On les appelle par `https://odm-api.netlify.app/.netlify/functions/<nom>`. Certa
 | Fonction | Paramètres | Renvoie | Utilisée par |
 |---|---|---|---|
 | `marques` | `search`, `limit`, `offset` | Marques avec leurs controverses et bénéficiaires | site, extension |
-| `marque-by-slug` | `slug` (requis) | Une marque complète : controverses, chaîne de bénéficiaires, conseils, autres noms. Le slug d'un autre nom (ex. `knacki`) renvoie sa marque | page `/marques/[slug]` |
+| `marque-by-slug` | `slug` (requis) | Une marque complète : controverses, chaîne de bénéficiaires, conseils, autres noms (`autres_noms` : produits, `variantes` : autres façons d'écrire la marque). Le slug d'un produit (ex. `knacki`) ou d'une variante (ex. `total`) renvoie sa marque | page `/marques/[slug]` |
 | `marques-slugs` | — | Liste des slugs, pour la génération statique | site |
 | `marques-stats` | — | Statistiques de la page `/marques` | site |
-| `marques-noms` | — | `id`, `nom` et `autres_noms` de toutes les marques, filtrés dans le navigateur | barre de recherche |
+| `marques-noms` | — | `id`, `nom`, `autres_noms` (produits) et `variantes` de toutes les marques, filtrés dans le navigateur | barre de recherche |
 | `beneficiaires-noms` | — | `id` + `nom` + `type_beneficiaire` des bénéficiaires controversés, filtrés dans le navigateur | barre de recherche |
 | `evenements` | `limit`, `offset` | Controverses, les plus récentes d'abord | site |
 | `categories` | — | Catégories de controverses | site |

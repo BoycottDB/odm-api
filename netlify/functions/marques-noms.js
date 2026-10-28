@@ -1,5 +1,5 @@
 /**
- * Netlify Function - Noms de toutes les marques (id + nom + autres noms), pour la recherche du site
+ * Netlify Function - Noms de toutes les marques (id, nom, produits et variantes du nom), pour la recherche du site
  * Liste courte, chargée une fois par le navigateur puis filtrée sur place
  */
 import { createClient } from '@supabase/supabase-js';
@@ -42,14 +42,19 @@ const handler = sentryHandler(async (event) => {
   try {
     const [marques, autresNoms] = await Promise.all([
       toutesLesLignes(supabase, 'Marque', 'id, nom'),
-      toutesLesLignes(supabase, 'marque_autre_nom', 'marque_id, nom'),
+      toutesLesLignes(supabase, 'marque_autre_nom', 'marque_id, nom, type'),
     ]);
     marques.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
 
-    // Gammes vendues sous la marque (ex. Knacki pour Herta) : la recherche les mène à la page de la marque
+    // Gammes vendues sous la marque (ex. Knacki pour Herta) et variantes de son nom (ex. Total pour TotalEnergies) :
+    // la recherche les mène à la page de la marque
+    const nomsDe = (marque, type) => autresNoms
+      .filter((autre) => autre.marque_id === marque.id && autre.type === type)
+      .map((autre) => autre.nom);
     const resultat = marques.map((marque) => ({
       ...marque,
-      autres_noms: autresNoms.filter((autre) => autre.marque_id === marque.id).map((autre) => autre.nom),
+      autres_noms: nomsDe(marque, 'produit'),
+      variantes: nomsDe(marque, 'variante'),
     }));
 
     return {
