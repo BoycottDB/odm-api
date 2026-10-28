@@ -1,5 +1,5 @@
 /**
- * Netlify Function - Noms de toutes les marques (id + nom), pour la recherche du site
+ * Netlify Function - Noms de toutes les marques (id + nom + autres noms), pour la recherche du site
  * Liste courte, chargée une fois par le navigateur puis filtrée sur place
  */
 import { createClient } from '@supabase/supabase-js';
@@ -40,13 +40,22 @@ const handler = sentryHandler(async (event) => {
   }
 
   try {
-    const marques = await toutesLesLignes(supabase, 'Marque', 'id, nom');
+    const [marques, autresNoms] = await Promise.all([
+      toutesLesLignes(supabase, 'Marque', 'id, nom'),
+      toutesLesLignes(supabase, 'marque_autre_nom', 'marque_id, nom'),
+    ]);
     marques.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
+
+    // Gammes vendues sous la marque (ex. Knacki pour Herta) : la recherche les mène à la page de la marque
+    const resultat = marques.map((marque) => ({
+      ...marque,
+      autres_noms: autresNoms.filter((autre) => autre.marque_id === marque.id).map((autre) => autre.nom),
+    }));
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify(marques)
+      body: JSON.stringify(resultat)
     };
   } catch (error) {
     console.error('Error fetching brand names:', error);
