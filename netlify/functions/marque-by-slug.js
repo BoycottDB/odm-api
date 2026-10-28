@@ -229,7 +229,7 @@ const handler = sentryHandler(async (event) => {
     ]);
 
     // Trouver la marque correspondant au slug, sinon celle dont un autre nom y correspond
-    // (le site affiche alors la page de la marque, titrée du produit ou, pour une variante, du nom de la marque)
+    // (le site affiche alors la page de la marque titrée du produit ou, pour une variante, redirige vers la marque)
     const autreNom = autresNoms.find(a => slugify(a.nom) === slug);
     const marque = marques.find(m => slugify(m.nom) === slug)
       ?? (autreNom && marques.find(m => m.id === autreNom.marque_id));
