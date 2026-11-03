@@ -126,6 +126,24 @@ function marquesTransitives(graphe, beneficiaireId, marqueActuelleId, visites = 
 }
 
 /**
+ * Part détenue en pourcentage : premier « x % » du texte interne part_detenue
+ * (« 29,26 % depuis fin 2024 » → 29.26), null si la part n'est pas chiffrée
+ */
+function pourcentageDetenu(partDetenue) {
+  const match = /(\d+(?:[.,]\d+)?)\s*%/.exec(partDetenue || '');
+  return match ? parseFloat(match[1].replace(',', '.')) : null;
+}
+
+/**
+ * Bénéficiaires directs du plus gros actionnaire au plus petit, ceux sans part chiffrée
+ * après (dans l'ordre d'ajout). part_detenue sert seulement au tri : il n'est jamais servi.
+ */
+function trierParPartDetenue(liaisons) {
+  const rang = (liaison) => pourcentageDetenu(liaison.part_detenue) ?? -1;
+  return [...liaisons].sort((a, b) => rang(b) - rang(a));
+}
+
+/**
  * Construire la chaîne de bénéficiaires (chaque bénéficiaire une seule fois ;
  * les liens entre bénéficiaires sont dans relations_suivantes)
  */
@@ -274,7 +292,7 @@ const handler = sentryHandler(async (event) => {
     const [{ data: liaisonsBeneficiaires, error: liaisonsError }, graphe] = await Promise.all([
       supabase
         .from('Marque_beneficiaire')
-        .select('beneficiaire_id, lien_financier')
+        .select('beneficiaire_id, lien_financier, part_detenue')
         .eq('marque_id', marque.id)
         .order('id'),
       grapheRecent(),
@@ -286,7 +304,7 @@ const handler = sentryHandler(async (event) => {
 
     const chaine_beneficiaires = [];
     const visitedIds = new Set();
-    for (const liaison of liaisonsBeneficiaires) {
+    for (const liaison of trierParPartDetenue(liaisonsBeneficiaires)) {
       chaine_beneficiaires.push(...construireChaine(
         graphe,
         liaison.beneficiaire_id,
