@@ -17,7 +17,7 @@ odm-web (Next.js, via DataService)  ·  odm-extension (service worker)
 ```
 
 - **Une fonction par point d'accès**, dans `netlify/functions/`.
-- **Clé anon uniquement** : l'API ne peut que lire. Les politiques RLS de Supabase n'autorisent que `SELECT` sur les tables publiques.
+- **Clé anon uniquement** : l'API ne peut que lire. Les politiques RLS de Supabase n'autorisent que `SELECT` sur les tables publiques et cachent les controverses masquées (`masquee = true`) : aucune fonction n'a à les filtrer.
 - **Deux niveaux de cache** : un cache en mémoire, perdu quand Netlify recycle la fonction ; le CDN, lui, sert les réponses sans réveiller la fonction.
 - **Chaîne de bénéficiaires** : `utils/marquesTransitives.js` remonte récursivement les relations entre bénéficiaires (par exemple, voir les marques de L'Oréal depuis BlackRock via Nestlé), avec une protection contre les cycles.
 - **Erreurs** : suivies avec Sentry (`utils/sentry.js`).
@@ -37,9 +37,10 @@ On les appelle par `https://odm-api.netlify.app/.netlify/functions/<nom>`. Certa
 | `evenements` | `limit`, `offset` | Controverses, les plus récentes d'abord | site |
 | `categories` | — | Catégories de controverses | site |
 | `secteurs-marque` | `id` (facultatif) | Secteurs d'activité | site |
+| `droits-reponse` | — | Réponses publiées au titre du droit de réponse, les plus récentes d'abord | page `/droit-de-reponse` |
 | `health` | — | État de l'API et de la connexion Supabase | admin |
 
-Cache CDN de 10 à 20 minutes sur `marques`, `marque-by-slug`, `marques-slugs`, `marques-stats`, `marques-noms` et `beneficiaires-noms`. Les autres fonctions n'ont que le cache en mémoire, de 5 minutes à 1 heure selon la fonction (`UNIFIED_TTL` dans [serverlessCache.js](netlify/functions/utils/serverlessCache.js), ou constante `CACHE_TTL` en tête de fichier).
+Cache CDN de 10 à 20 minutes sur `marques`, `marque-by-slug`, `marques-slugs`, `marques-stats`, `marques-noms`, `beneficiaires-noms` et `droits-reponse`. Les autres fonctions n'ont que le cache en mémoire, de 5 minutes à 1 heure selon la fonction (`UNIFIED_TTL` dans [serverlessCache.js](netlify/functions/utils/serverlessCache.js), ou constante `CACHE_TTL` en tête de fichier).
 
 ## Développement
 
