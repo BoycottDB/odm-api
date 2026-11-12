@@ -19,7 +19,7 @@ odm-web (Next.js, via DataService)  ·  odm-extension (service worker)
 - **Une fonction par point d'accès**, dans `netlify/functions/`.
 - **Clé anon uniquement** : l'API ne peut que lire. Les politiques RLS de Supabase n'autorisent que `SELECT` sur les tables publiques et cachent les controverses masquées (`masquee = true`) : aucune fonction n'a à les filtrer.
 - **Deux niveaux de cache** : un cache en mémoire, perdu quand Netlify recycle la fonction ; le CDN, lui, sert les réponses sans réveiller la fonction.
-- **Chaîne de bénéficiaires** : `utils/marquesTransitives.js` remonte récursivement les relations entre bénéficiaires (par exemple, voir les marques de L'Oréal depuis BlackRock via Nestlé), avec une protection contre les cycles.
+- **Chaîne de bénéficiaires** : `marque-by-slug` charge tous les liens en 4 requêtes et remonte les relations entre bénéficiaires en mémoire (par exemple, voir les marques de L'Oréal depuis BlackRock via Nestlé), avec une protection contre les cycles.
 - **Erreurs** : suivies avec Sentry (`utils/sentry.js`).
 
 ## Points d'accès
@@ -28,7 +28,7 @@ On les appelle par `https://odm-api.netlify.app/.netlify/functions/<nom>`. Certa
 
 | Fonction | Paramètres | Renvoie | Utilisée par |
 |---|---|---|---|
-| `marques` | `search`, `limit`, `offset` | Marques avec leurs controverses et bénéficiaires | site, extension |
+| `marques` | `limit`, `offset` | Toutes les marques avec leurs controverses et leurs bénéficiaires directs | extension (synchronisation et snapshot statique) |
 | `marque-by-slug` | `slug` (requis) | Une marque complète : controverses, chaîne de bénéficiaires, conseils, autres noms (`autres_noms` : produits, `variantes` : autres façons d'écrire la marque). Le slug d'un produit (ex. `knacki`) ou d'une variante (ex. `total`) renvoie sa marque | page `/marques/[slug]` |
 | `marques-slugs` | — | Liste des slugs, pour la génération statique | site |
 | `marques-stats` | — | Statistiques de la page `/marques` | site |
