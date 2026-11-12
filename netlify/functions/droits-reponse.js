@@ -1,6 +1,7 @@
 /**
  * Netlify Function - Réponses publiées au titre du droit de réponse (table droit_reponse), les plus récentes d'abord
  * Lues par la page /droit-de-reponse ; publier une réponse ne demande qu'une requête SQL
+ * fiche_titre reste en base pour la trace mais n'est jamais renvoyé : republier le texte contesté annulerait un masquage ou une correction
  */
 import { createClient } from '@supabase/supabase-js';
 import { initSentry, sentryHandler } from './utils/sentry.js';
@@ -41,7 +42,7 @@ const handler = sentryHandler(async (event) => {
   try {
     const { data, error } = await supabase
       .from('droit_reponse')
-      .select('id, demandeur, fiche_titre, fiche_lien, date_reception, date_publication, texte')
+      .select('id, demandeur, fiche_table, fiche_lien, date_reception, date_publication, texte')
       .order('date_publication', { ascending: false })
       .order('id', { ascending: false });
 
