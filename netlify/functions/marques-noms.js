@@ -41,13 +41,15 @@ const handler = sentryHandler(async (event) => {
 
   try {
     const [marques, autresNoms] = await Promise.all([
-      toutesLesLignes(supabase, 'Marque', 'id, nom'),
+      toutesLesLignes(supabase, 'Marque', 'id, nom, noms_ambigus'),
       toutesLesLignes(supabase, 'marque_autre_nom', 'marque_id, nom, type'),
     ]);
     marques.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
 
     // Gammes vendues sous la marque (ex. Knacki pour Herta) et variantes de son nom (ex. Total pour TotalEnergies) :
-    // la recherche les mène à la page de la marque
+    // la recherche les mène à la page de la marque.
+    // noms_ambigus : ceux de ces noms qui sont aussi un mot, un prénom ou un lieu courant ; l'extension ne les
+    // reconnaît que si le site marchand les donne lui-même comme marque
     const nomsDe = (marque, type) => autresNoms
       .filter((autre) => autre.marque_id === marque.id && autre.type === type)
       .map((autre) => autre.nom);
