@@ -28,11 +28,10 @@ On les appelle par `https://odm-api.netlify.app/.netlify/functions/<nom>`. Certa
 
 | Fonction | Paramètres | Renvoie | Utilisée par |
 |---|---|---|---|
-| `marques` | `limit`, `offset` | Toutes les marques avec leurs controverses et leurs bénéficiaires directs | extension (synchronisation et snapshot statique) |
 | `marque-by-slug` | `slug` (requis) | Une marque complète : controverses, chaîne de bénéficiaires, conseils, autres noms (`autres_noms` : produits, `variantes` : autres façons d'écrire la marque). Le slug d'un produit (ex. `knacki`) ou d'une variante (ex. `total`) renvoie sa marque | page `/marques/[slug]` |
 | `marques-slugs` | — | Liste des slugs, pour la génération statique | site |
-| `marques-stats` | — | Statistiques de la page `/marques` | site |
-| `marques-noms` | — | `id`, `nom`, `autres_noms` (produits) et `variantes` de toutes les marques, filtrés dans le navigateur | barre de recherche |
+| `marques-stats` | — | Statistiques de la page `/marques` : étiquettes et bénéficiaires controversés de chaque marque | site, extension (synchronisation) |
+| `marques-noms` | — | `id`, `nom`, `autres_noms` (produits) et `variantes` de toutes les marques, filtrés dans le navigateur | barre de recherche, extension (synchronisation) |
 | `beneficiaires-noms` | — | `id` + `nom` + `type_beneficiaire` des bénéficiaires controversés, filtrés dans le navigateur | barre de recherche |
 | `evenements` | `limit`, `offset` | Controverses, les plus récentes d'abord | site |
 | `categories` | — | Catégories de controverses | site |
@@ -40,7 +39,7 @@ On les appelle par `https://odm-api.netlify.app/.netlify/functions/<nom>`. Certa
 | `droits-reponse` | — | Réponses publiées au titre du droit de réponse, les plus récentes d'abord | page `/droit-de-reponse` |
 | `health` | — | État de l'API et de la connexion Supabase | admin |
 
-Cache CDN de 10 à 20 minutes sur `marques`, `marque-by-slug`, `marques-slugs`, `marques-stats`, `marques-noms`, `beneficiaires-noms` et `droits-reponse`. Les autres fonctions n'ont que le cache en mémoire, de 5 minutes à 1 heure selon la fonction (`UNIFIED_TTL` dans [serverlessCache.js](netlify/functions/utils/serverlessCache.js), ou constante `CACHE_TTL` en tête de fichier).
+Cache CDN de 10 à 20 minutes sur `marque-by-slug`, `marques-slugs`, `marques-stats`, `marques-noms`, `beneficiaires-noms` et `droits-reponse`. Les autres fonctions n'ont que le cache en mémoire, de 5 minutes à 1 heure selon la fonction (constante `CACHE_TTL`, dans [serverlessCache.js](netlify/functions/utils/serverlessCache.js) ou en tête de fichier).
 
 ## Développement
 
