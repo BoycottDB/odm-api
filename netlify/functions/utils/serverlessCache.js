@@ -3,11 +3,9 @@
  * Cache optimisé pour l'architecture Netlify Functions (processus isolés)
  */
 
-// Durées de vie du cache en mémoire, par type de requête
-const UNIFIED_TTL = {
-  marques_search: 10 * 60 * 1000,    // 10 minutes - recherche
-  marques_all: 20 * 60 * 1000        // 20 minutes - liste complète (TTL par défaut)
-};
+// Durée de vie d'une entrée du cache en mémoire
+const CACHE_TTL = 20 * 60 * 1000; // 20 minutes
+const MAX_SIZE = 50;
 
 class ServerlessCache {
   constructor(functionName) {
@@ -16,20 +14,7 @@ class ServerlessCache {
     this.lastCleanup = Date.now();
     this.cleanupInterval = 10 * 60 * 1000; // Nettoyage toutes les 10 minutes
 
-    // Cache spécialisé selon la fonction
-    this.maxSize = this.getMaxSizeForFunction(functionName);
-  }
-
-  /**
-   * Détermine la taille max du cache selon le type de fonction
-   */
-  getMaxSizeForFunction(functionName) {
-    const sizeConfig = {
-      marques: 100,           // Searches + all
-      default: 50
-    };
-
-    return sizeConfig[functionName] || sizeConfig.default;
+    this.maxSize = MAX_SIZE;
   }
 
   /**
@@ -55,8 +40,7 @@ class ServerlessCache {
       return null;
     }
 
-    const ttl = UNIFIED_TTL[endpoint] || UNIFIED_TTL.marques_all; // TTL par défaut
-    const isExpired = Date.now() - cached.timestamp > ttl;
+    const isExpired = Date.now() - cached.timestamp > CACHE_TTL;
 
     if (isExpired) {
       this.cache.delete(key);
@@ -100,11 +84,8 @@ class ServerlessCache {
       const [keyA, valueA] = a;
       const [keyB, valueB] = b;
 
-      const ttlA = UNIFIED_TTL[valueA.endpoint] || UNIFIED_TTL.marques_all;
-      const ttlB = UNIFIED_TTL[valueB.endpoint] || UNIFIED_TTL.marques_all;
-
-      const expiredA = now - valueA.timestamp > ttlA;
-      const expiredB = now - valueB.timestamp > ttlB;
+      const expiredA = now - valueA.timestamp > CACHE_TTL;
+      const expiredB = now - valueB.timestamp > CACHE_TTL;
 
       if (expiredA && !expiredB) return -1;
       if (!expiredA && expiredB) return 1;
@@ -135,8 +116,7 @@ class ServerlessCache {
 
     let deletedCount = 0;
     for (const [key, cached] of this.cache.entries()) {
-      const ttl = UNIFIED_TTL[cached.endpoint] || UNIFIED_TTL.marques_all;
-      const isExpired = now - cached.timestamp > ttl;
+      const isExpired = now - cached.timestamp > CACHE_TTL;
 
       if (isExpired) {
         this.cache.delete(key);
@@ -159,4 +139,4 @@ function createServerlessCache(functionName) {
   return new ServerlessCache(functionName);
 }
 
-export { createServerlessCache, UNIFIED_TTL };
+export { createServerlessCache };

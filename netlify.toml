@@ -22,11 +22,6 @@
 
 # Endpoints pour l'application web (architecture simplifiée)
 [[redirects]]
-  from = "/api/marques"
-  to = "/.netlify/functions/marques"
-  status = 200
-
-[[redirects]]
   from = "/api/evenements"
   to = "/.netlify/functions/evenements"
   status = 200
